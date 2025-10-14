@@ -5,6 +5,7 @@ def main():
     info = Data_fetcher_instance.get_info()
     income = Data_fetcher_instance.get_and_edit_income_statement()
     print(info)
+    print(income)
     server = MainWindow()
     server.run()
 

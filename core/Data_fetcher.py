@@ -24,6 +24,12 @@ class Data_fetcher:
         share_price_data.reset_index(inplace=True)
         return share_price_data
     
+    # Calculate P/E Ratio row
+    def calculate_pe_ratio(self, price, earnings_per_share):
+        if earnings_per_share == 0 or earnings_per_share is None:
+            return None
+        return price / earnings_per_share
+
     def get_and_edit_income_statement(self):
         # Retrieve ticker data
         info = self.ticker.info
@@ -45,17 +51,27 @@ class Data_fetcher:
                 share_prices.append(None)
         income_statement.loc['Share Price'] = share_prices
 
-        # Calculate P/E Ratio row
-        def calculate_pe_ratio(price, earnings_per_share):
-            if earnings_per_share == 0 or earnings_per_share is None:
-                return None
-            return price / earnings_per_share
+        dividends = self.ticker.dividends.reset_index()
+        dividends['Date'] = pd.to_datetime(dividends['Date']).dt.date
+
+        dividend_values = []
+        for date_str in income_statement.columns:
+            fiscal_date = pd.to_datetime(date_str).date()
+            mask = dividends['Date'] <= fiscal_date
+            if mask.any():
+                last_div = dividends[mask].iloc[-1]['Dividends']
+                dividend_values.append(last_div)
+            else:
+                dividend_values.append(0.0)
+        income_statement.loc['Dividends'] = dividend_values
+
+        
 
         pe_ratios = []
         for col in income_statement.columns:
             share_price = income_statement.loc["Share Price", col]
             eps = income_statement.loc["Basic EPS", col] if "Basic EPS" in income_statement.index else None
-            pe = calculate_pe_ratio(share_price, eps)
+            pe = self.calculate_pe_ratio(share_price, eps)
             pe_ratios.append(pe)
         income_statement.loc["P/E Ratio"] = pe_ratios
 
