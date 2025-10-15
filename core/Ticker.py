@@ -10,7 +10,8 @@ class Ticker():
         return f"Information about {self.symbol}"
 
     def get_close_price(self):
-        url = "https://query2.finance.yahoo.com/v8/finance/chart/" + self.symbol + "?period1=946702800&period2=1760391825&interval=1d&events=history"
+        unit_today_time = int(datetime.now().timestamp())
+        url = "https://query2.finance.yahoo.com/v8/finance/chart/" + self.symbol + "?period1=946702800&period2="+  str(unit_today_time) + "&interval=1d&events=history"
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
         response = requests.get(url, headers=headers)
         if response.status_code == 200:
@@ -29,3 +30,15 @@ class Ticker():
             # Set the date as index
             #df.set_index('Date', inplace=True)
             return df
+        
+    def get_current_price(self):
+        #url = f"https://query2.finance.yahoo.com/v7/finance/quote?symbols={self.symbol}"
+        unit_today_time = int(datetime.now().timestamp())
+        url = "https://query2.finance.yahoo.com/v8/finance/chart/" + self.symbol + "?period1=946702800&period2="+  str(unit_today_time) + "&interval=1d&events=history"
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
+        response = requests.get(url, headers=headers)
+        if response.status_code == 200:
+            data = response.json()
+            current_price = int(data['chart']['result'][0]['meta']['regularMarketPrice'])
+            return current_price
+        
