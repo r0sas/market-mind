@@ -4,26 +4,57 @@ import pandas as pd
 
 class Stock_portfolio:
     def __init__(self):
-        self.stocks_symbols = []
-        self.stocks = []
+        pass
+    
+    def get_historical_rentability(self, ticker_symbol, df):
+        print(ticker_symbol)
+        temp_df = df[df["Stock Symbol"] == ticker_symbol].copy()
 
-    def add_position(self, stock_symbol, shares, purchase_price, date):
-        if stock_symbol not in self.stocks_symbols:
-            self.stocks_symbols.append(stock_symbol)
-            self.stocks.append(Stock(stock_symbol, shares, purchase_price, date))
-            # existing_stock = self.stocks[stock.symbol]
-            # existing_stock.shares.append(stock.shares[0])
-            # existing_stock.purchase_price.append(stock.purchase_price[0])
-        else:
-            index = self.stocks_symbols.index(stock_symbol)
-            stock_object = self.stocks[index]
-            stock_object.add_shares(shares, purchase_price, date)
+        # Get earliest acquisition date in Unix time
+        min_date = int(temp_df["Acquisition Date"].min().timestamp())
 
-    def get_stock_object(self, stock_symbol):
-        if stock_symbol in self.stocks_symbols:
-            index = self.stocks_symbols.index(stock_symbol)
-            return self.stocks[index]
-        return None
+        # Fetch close prices only once per ticker
+        ticker = Ticker(ticker_symbol)
+        close_df = ticker.get_close_price(min_date)
+        close_df['Date'] = pd.to_datetime(close_df['Date']).dt.normalize()
+        close_df['Invested Amount'] = 0.0
+        close_df['Acq Shares'] = 0.0
+
+        # Apply acquisitions to the corresponding dates
+        for _, row in temp_df.iterrows():
+            acquisition_date = row['Acquisition Date']
+            close_df.loc[close_df["Date"] == acquisition_date, 'Invested Amount'] += row["Investment (€)"]
+            close_df.loc[close_df["Date"] == acquisition_date, 'Acq Shares'] += row['Shares']
+
+        # Compute cumulative totals
+        close_df['Shares'] = close_df['Acq Shares'].cumsum()
+        close_df['Total Invested'] = close_df['Invested Amount'].cumsum()
+        close_df['Current Value'] = close_df['Close'] * close_df['Shares']
+        close_df['ROI'] = ((close_df['Current Value'] - close_df['Total Invested']) / close_df['Total Invested']) * 100
+        close_df['Ticker'] = ticker_symbol
+
+        return close_df
+
+
+    def get_portfolio_historical_rentability(self, df):
+        df["Acquisition Date"] = pd.to_datetime(df["Acquisition Date"])
+        df_list = []
+
+        for ticker_symbol in df["Stock Symbol"].unique():
+            close_df = self.get_historical_rentability(ticker_symbol, df)
+            df_list.append(close_df)
+
+        # Concatenate all ticker data
+        result_df = pd.concat(df_list, ignore_index=True)
+
+        # Aggregate portfolio by date
+        agg_df = result_df.groupby('Date').agg({
+            'Current Value': 'sum',
+            'Total Invested': 'sum'
+        }).reset_index()
+        agg_df['ROI'] = ((agg_df['Current Value'] - agg_df['Total Invested']) / agg_df['Total Invested']) * 100
+
+        return agg_df, result_df
     
     def get_historical_data(self, selected_stocks):
         df = pd.DataFrame(columns=[

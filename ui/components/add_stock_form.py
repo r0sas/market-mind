@@ -1,13 +1,13 @@
 import streamlit as st
 import pandas as pd
 from datetime import date
-
+from core.stock import Stock
 
 class AddStockForm:
     """Handles user input for adding new stock acquisitions."""
 
-    def __init__(self, portfolio):
-        self.portfolio = portfolio
+    def __init__(self):
+        pass
 
     def render(self):
         st.subheader("➕ Add a New Acquisition")
@@ -31,8 +31,7 @@ class AddStockForm:
                 st.error("Please fill all fields correctly.")
 
     def _add_to_portfolio(self, stock_symbol, shares, price, acquisition_date):
-        self.portfolio.add_position(stock_symbol, shares, price, acquisition_date)
-        stock_obj = self.portfolio.get_stock_object(stock_symbol)
+        stock_obj = Stock(stock_symbol, shares, price, acquisition_date)
         current_price = stock_obj.fetch_current_price()
 
         new_row = {

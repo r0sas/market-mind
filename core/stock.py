@@ -22,7 +22,7 @@ class Stock:
     def add_shares(self, shares, purchase_price, date):
         print(type(shares), type(purchase_price))
         self.shares.append(int(shares))
-        self.purchase_price.append(int(purchase_price))
+        self.purchase_price.append(purchase_price)
         self.purchase_dates.append(date)
     
     def get_symbol(self):

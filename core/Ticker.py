@@ -9,9 +9,10 @@ class Ticker():
     def get_info(self):
         return f"Information about {self.symbol}"
 
-    def get_close_price(self):
-        unit_today_time = int(datetime.now().timestamp())
-        url = "https://query2.finance.yahoo.com/v8/finance/chart/" + self.symbol + "?period1=946702800&period2="+  str(unit_today_time) + "&interval=1d&events=history"
+    def get_close_price(self, min_date=946702800, max_date=None):
+        if max_date is None:
+            max_date = int(datetime.now().timestamp())
+        url = "https://query2.finance.yahoo.com/v8/finance/chart/" + self.symbol + "?period1="+ str(min_date) + "&period2="+  str(max_date) + "&interval=1d&events=history"
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
         response = requests.get(url, headers=headers)
         if response.status_code == 200:
@@ -39,6 +40,6 @@ class Ticker():
         response = requests.get(url, headers=headers)
         if response.status_code == 200:
             data = response.json()
-            current_price = int(data['chart']['result'][0]['meta']['regularMarketPrice'])
+            current_price = data['chart']['result'][0]['meta']['regularMarketPrice']
             return current_price
         
