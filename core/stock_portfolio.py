@@ -8,7 +8,7 @@ class Stock_portfolio:
     
     def get_historical_rentability(self, ticker_symbol, df):
         print(ticker_symbol)
-        temp_df = df[df["Stock Symbol"] == ticker_symbol].copy()
+        temp_df = df[df["Ticker"] == ticker_symbol].copy()
 
         # Get earliest acquisition date in Unix time
         min_date = int(temp_df["Acquisition Date"].min().timestamp())
@@ -16,6 +16,7 @@ class Stock_portfolio:
         # Fetch close prices only once per ticker
         ticker = Ticker(ticker_symbol)
         close_df = ticker.get_close_price(min_date)
+        print(close_df)
         close_df['Date'] = pd.to_datetime(close_df['Date']).dt.normalize()
         close_df['Invested Amount'] = 0.0
         close_df['Acq Shares'] = 0.0
@@ -23,7 +24,7 @@ class Stock_portfolio:
         # Apply acquisitions to the corresponding dates
         for _, row in temp_df.iterrows():
             acquisition_date = row['Acquisition Date']
-            close_df.loc[close_df["Date"] == acquisition_date, 'Invested Amount'] += row["Investment (€)"]
+            close_df.loc[close_df["Date"] == acquisition_date, 'Invested Amount'] += row["Investment ($)"]
             close_df.loc[close_df["Date"] == acquisition_date, 'Acq Shares'] += row['Shares']
 
         # Compute cumulative totals
@@ -40,7 +41,7 @@ class Stock_portfolio:
         df["Acquisition Date"] = pd.to_datetime(df["Acquisition Date"])
         df_list = []
 
-        for ticker_symbol in df["Stock Symbol"].unique():
+        for ticker_symbol in df["Ticker"].unique():
             close_df = self.get_historical_rentability(ticker_symbol, df)
             df_list.append(close_df)
 
@@ -63,25 +64,9 @@ class Stock_portfolio:
             ticker = Ticker(symbol)
             hist_data = ticker.get_close_price()
             hist_data["Ticker"] = symbol
+            hist_data['Rentability'] = hist_data['Close'].pct_change()
+            hist_data['Cumulative Rentability'] = ((1 + hist_data['Rentability']).cumprod() - 1)
+            #hist_data['Rentability'] = hist_data['Rentability']*100
+            #hist_data['Cumulative Rentability'] = hist_data['Cumulative Rentability']*100
             df = pd.concat([df, hist_data], ignore_index=True)
         return df
-
-    # def total_current_value(self, price_lookup):
-    #     total_value = 0
-    #     for stock in self.stocks.values():
-    #         current_price = price_lookup(stock.symbol)
-    #         total_value += stock.current_value(current_price)
-    #     return total_value
-
-    # def total_invested(self):
-    #     total_invested = 0
-    #     for stock in self.stocks.values():
-    #         total_invested += sum([s * p for s, p in zip(stock.shares, stock.purchase_price)])
-    #     return total_invested
-
-    # def overall_return_on_investment(self, price_lookup):
-    #     total_invested = self.total_invested()
-    #     total_current_value = self.total_current_value(price_lookup)
-    #     if total_invested == 0:
-    #         return 0
-    #     return ((total_current_value - total_invested) / total_invested) * 100
