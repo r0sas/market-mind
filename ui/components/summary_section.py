@@ -9,18 +9,16 @@ class SummarySection:
         st.subheader("📊 ROI Summary by Stock Symbol")
 
         summary = (
-            df.groupby("Stock Symbol")
+            df.groupby("Ticker")
             .agg({
-                "Investment (€)": "sum",
-                "Current Value (€)": "sum"
+                "Investment ($)": "sum",
+                "Current Value ($)": "sum"
             })
             .reset_index()
         )
         summary["ROI (%)"] = (
-            (summary["Current Value (€)"] - summary["Investment (€)"]) /
-            summary["Investment (€)"]
+            (summary["Current Value ($)"] - summary["Investment ($)"]) /
+            summary["Investment ($)"]
         ) * 100
 
-        summary["Select"] = [False for _ in range(summary.shape[0])]
-        summary = st.data_editor(summary, use_container_width=True)
-        return summary[summary["Select"] == True]["Stock Symbol"].tolist()
+        st.dataframe(summary)

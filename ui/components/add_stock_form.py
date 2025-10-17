@@ -1,13 +1,13 @@
 import streamlit as st
 import pandas as pd
 from datetime import date
-from core.stock import Stock
+from core.portfolio_manager import PortfolioManager
 
 class AddStockForm:
     """Handles user input for adding new stock acquisitions."""
 
-    def __init__(self):
-        pass
+    def __init__(self, portfolio_manager: PortfolioManager):
+        self.porfolio_manager = portfolio_manager
 
     def render(self):
         st.subheader("➕ Add a New Acquisition")
@@ -18,9 +18,9 @@ class AddStockForm:
             with col2:
                 shares = st.number_input("Shares", min_value=0.0, step=1.0)
             with col3:
-                price = st.number_input("Acquisition Price (€)", min_value=0.0, step=0.01)
+                price = st.number_input("Acquisition Price ($)", min_value=0.0, step=0.01)
             with col4:
-                acquisition_date = st.date_input("Acquisition Date", value=date.today())
+                acquisition_date = st.date_input("Date", value=date.today())
 
             submitted = st.form_submit_button("Add Acquisition")
 
@@ -31,14 +31,14 @@ class AddStockForm:
                 st.error("Please fill all fields correctly.")
 
     def _add_to_portfolio(self, stock_symbol, shares, price, acquisition_date):
-        stock_obj = Stock(stock_symbol, shares, price, acquisition_date)
-        current_price = stock_obj.fetch_current_price()
+        current_price = self.porfolio_manager.get_stocks_current_price([stock_symbol])[stock_symbol]
+        print(current_price)
 
         new_row = {
-            "Stock Symbol": stock_symbol,
+            "Ticker": stock_symbol,
             "Shares": shares,
             "Price": price,
-            "Acquisition Date": acquisition_date,
+            "Date": acquisition_date,
             "Current Price": current_price
         }
 

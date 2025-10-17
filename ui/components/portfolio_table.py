@@ -13,8 +13,8 @@ class PortfolioTable:
         st.subheader("💼 All Acquisitions")
 
         df = st.session_state.portfolio.copy()
-        df["Investment (€)"] = df["Shares"] * df["Price"]
-        df["Current Value (€)"] = df["Shares"] * df["Current Price"]
+        df["Investment ($)"] = df["Shares"] * df["Price"]
+        df["Current Value ($)"] = df["Shares"] * df["Current Price"]
         df["ROI (%)"] = ((df["Current Price"] - df["Price"]) / df["Price"]) * 100
 
         df_edited = st.data_editor(df, num_rows="dynamic", use_container_width=True)

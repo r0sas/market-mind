@@ -12,6 +12,7 @@ class Ticker():
     def get_close_price(self, min_date=946702800, max_date=None):
         if max_date is None:
             max_date = int(datetime.now().timestamp())
+        #Example https://query2.finance.yahoo.com/v8/finance/chart/TSM?period1=1760361631&period2=1760624435&interval=1d&events=history
         url = "https://query2.finance.yahoo.com/v8/finance/chart/" + self.symbol + "?period1="+ str(min_date) + "&period2="+  str(max_date) + "&interval=1d&events=history"
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
         response = requests.get(url, headers=headers)
