@@ -35,6 +35,9 @@ class Data_fetcher:
         info = self.ticker.info
         income_statement = self.ticker.income_stmt
 
+        # Add Ticker as the first row for easy identification
+        income_statement.loc['Ticker'] = [self.ticker_symbol] * len(income_statement.columns)
+        
         # Share price data
         share_price_data = self.ticker.history(period="max")
         share_price_data.reset_index(inplace=True)
@@ -64,8 +67,6 @@ class Data_fetcher:
             else:
                 dividend_values.append(0.0)
         income_statement.loc['Dividends'] = dividend_values
-
-        
 
         pe_ratios = []
         for col in income_statement.columns:
