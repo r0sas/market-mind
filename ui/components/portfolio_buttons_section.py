@@ -1,10 +1,11 @@
 import streamlit as st
 import pandas as pd
 import io
+from core.portfolio_manager import PortfolioManager
 
 class PortfolioButtonsSection:
-    def __init__(self):
-        pass
+    def __init__(self, portfolio_manager):
+        self.portfolio_manager = portfolio_manager
 
     def render(self):
         # --- BUTTONS SIDE BY SIDE ---
@@ -32,6 +33,7 @@ class PortfolioButtonsSection:
         if uploaded_file is not None:
             self.load_portfolio(uploaded_file)
             st.success("✅ DataFrame loaded successfully!")
+        
 
     def clear_portfolio(self):
         """Clears the portfolio DataFrame."""
@@ -41,4 +43,7 @@ class PortfolioButtonsSection:
 
     def load_portfolio(self, uploaded_file):
         """Loads a CSV file into the portfolio DataFrame."""
-        st.session_state.portfolio = pd.read_csv(uploaded_file)
+        loaded_df = pd.read_csv(uploaded_file)
+        for ticker in loaded_df["Ticker"].unique().tolist():
+            loaded_df["Current Price"][loaded_df["Ticker"] == ticker] = self.portfolio_manager.get_stocks_current_price([ticker])[ticker]
+        st.session_state.portfolio = loaded_df

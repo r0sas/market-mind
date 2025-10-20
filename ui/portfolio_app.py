@@ -21,7 +21,7 @@ class PortfolioApp:
     def run(self):
         AddStockForm(self.portfolio_manager).render()
         # Create CSV buffer for saving
-        PortfolioButtonsSection().render()
+        PortfolioButtonsSection(self.portfolio_manager).render()
         df = PortfolioTable().render()
         if df is None:
             return
