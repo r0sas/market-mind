@@ -2,7 +2,8 @@ import streamlit as st
 import pandas as pd
 from core.portfolio_manager import PortfolioManager
 # Import UI components
-from ui.components import AddStockForm, PortfolioTable, SummarySection, ChartSection, PlotSelectionDropdown
+from ui.components import AddStockForm, PortfolioTable, SummarySection, ChartSection, PortfolioButtonsSection
+import io
 
 class PortfolioApp:
     def __init__(self):
@@ -19,18 +20,12 @@ class PortfolioApp:
 
     def run(self):
         AddStockForm(self.portfolio_manager).render()
+        # Create CSV buffer for saving
+        PortfolioButtonsSection().render()
         df = PortfolioTable().render()
         if df is None:
             return
-
         SummarySection().render(df)
-
-        if st.button("🗑️ Clear All Data"):
-            st.session_state.portfolio = pd.DataFrame(columns=[
-                "Ticker", "Shares", "Price", "Date", "Current Price"
-            ])
-            st.success("Portfolio cleared.")
-        # PlotSelectionDropdown().render()
         # portfolio_rentability_data, stocks_history = Stock_portfolio().get_portfolio_historical_rentability(df)
         stocks_history = self.portfolio_manager.get_portfolio_history(df)
         print(stocks_history)
