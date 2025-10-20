@@ -1,0 +1,6 @@
+Ticker,Company,Sector,Industry,Basic EPS,Free Cash Flow,P/E Ratio,Share Price
+MSFT,Microsoft Corporation,Technology,Software - Infrastructure,9.7,65149000000.0,25.779925474186534,250.06527709960938
+AAPL,Apple Inc.,Technology,Consumer Electronics,5.67,92953000000.0,24.431188943314595,138.52484130859375
+META,"Meta Platforms, Inc.",Communication Services,Internet Content & Information,24.61,54072000000.0,23.736103527529462,584.1455078125
+GOOGL,Alphabet Inc.,Communication Services,Internet Content & Information,5.694,67012000000.0,25.265154019547715,143.8597869873047
+NVDA,NVIDIA Corporation,Technology,Semiconductors,0.391,8132000000.0,62.50645376532279,24.44002342224121
