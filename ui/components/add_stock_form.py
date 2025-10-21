@@ -32,7 +32,6 @@ class AddStockForm:
 
     def _add_to_portfolio(self, stock_symbol, shares, price, acquisition_date):
         current_price = self.porfolio_manager.get_stocks_current_price([stock_symbol])[stock_symbol]
-        print(current_price)
 
         new_row = {
             "Ticker": stock_symbol,

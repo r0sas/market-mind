@@ -29,6 +29,8 @@ class FetchStockData:
         df = df.drop(["open", "high", "low", "adjclose"], axis=1)        # can be useful for candlestick charts
         df = df.rename(columns={"symbol": "Ticker", "date": "Date"})
         df["Date"] = (pd.to_datetime(df["Date"], utc=True).dt.tz_localize(None).dt.normalize())
+        if "dividends" not in df.columns.to_list():
+            df["dividends"] = 0.0
         return df
 
     def get_current_price(self, symbols: list) -> dict:
