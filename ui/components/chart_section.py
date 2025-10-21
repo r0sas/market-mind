@@ -1,13 +1,11 @@
 import streamlit as st
 import plotly.express as px
-from core.portfolio_manager import PortfolioManager
 import plotly.graph_objects as go
 
 class ChartSection:
     """Plots historical data for selected stocks."""
 
-    def __init__(self, portfolio_manager: PortfolioManager):
-        self.portfolio_manager = portfolio_manager
+    def __init__(self):
         self.metrics_list = ["close", "Current Value", "Investment ($)", "dividends", "Cumulative Dividends", "Profit/Loss", "Rentability", "Cumulative Rentability", "ROI"]
 
     def render(self, selected_stocks: list, df):
