@@ -42,3 +42,18 @@ class FetchStockData:
             # 'regularMarketPrice' works for current or last close
             last_prices[symbol] = info.get('regularMarketPrice')
         return last_prices
+    
+    def get_stock_info(self, symbols: list[str]) -> dict:
+        tickers = Ticker(symbols)
+        info_data = tickers.summary_profile
+
+        # build dictionary of industry and sector
+        sectors_industries = {
+            symbol: {
+                "industry": info_data.get(symbol, {}).get("industry", "N/A"),
+                "sector": info_data.get(symbol, {}).get("sector", "N/A")
+            }
+            for symbol in symbols
+        }
+
+        return sectors_industries

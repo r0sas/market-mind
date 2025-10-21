@@ -1,13 +1,22 @@
 import streamlit as st
 import pandas as pd
 from datetime import date
-from core.portfolio_manager import PortfolioManager
+from core.stock_calculator import StockCalculator
+from typing import Optional, Dict
+
 
 class AddStockForm:
     """Handles user input for adding new stock acquisitions."""
 
-    def __init__(self, portfolio_manager: PortfolioManager):
-        self.porfolio_manager = portfolio_manager
+    def __init__(self, calculator: Optional[StockCalculator] = None):
+            """
+            Initialize the AddStockForm with a stock calculator.
+            
+            Args:
+                calculator: Optional StockCalculator instance. Creates new one if not provided.
+            """
+            self._calculator = calculator or StockCalculator()
+        
 
     def render(self):
         st.subheader("➕ Add a New Acquisition")
@@ -31,7 +40,7 @@ class AddStockForm:
                 st.error("Please fill all fields correctly.")
 
     def _add_to_portfolio(self, stock_symbol, shares, price, acquisition_date):
-        current_price = self.porfolio_manager.get_stocks_current_price([stock_symbol])[stock_symbol]
+        current_price = self._calculator.get_current_prices([stock_symbol])[stock_symbol]
 
         new_row = {
             "Ticker": stock_symbol,

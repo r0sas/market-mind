@@ -1,14 +1,14 @@
 import streamlit as st
 import pandas as pd
-from core.portfolio_manager import PortfolioManager
 # Import UI components
 from ui.components import AddStockForm, PortfolioTable, SummarySection, ChartSection, PortfolioButtonsSection
+from core.portfolio_analyzer import PortfolioAnalyzer
 import io
 
 class PortfolioApp:
     def __init__(self):
         self.selected_stocks = []
-        self.portfolio_manager = PortfolioManager()
+        self.analyzer = PortfolioAnalyzer()
 
         st.set_page_config(page_title="Stock ROI Tracker", layout="wide")
         st.title("📈 Stock ROI Tracker")
@@ -19,19 +19,19 @@ class PortfolioApp:
             ])
 
     def run(self):
-        AddStockForm(self.portfolio_manager).render()
+        AddStockForm().render()
         # Create CSV buffer for saving
-        PortfolioButtonsSection(self.portfolio_manager).render()
+        PortfolioButtonsSection().render()
         df = PortfolioTable().render()
         if df is None:
             return
-        SummarySection().render(df)
-        # portfolio_rentability_data, stocks_history = Stock_portfolio().get_portfolio_historical_rentability(df)
-        stocks_history = self.portfolio_manager.get_portfolio_history(df)
-        print(stocks_history)
-        portfolio_rentability_data = self.portfolio_manager.get_portfolio_rentability(stocks_history)
-        print("Portfolio Rentability")
-        print(portfolio_rentability_data)
-        stocks_rentability = self.portfolio_manager.get_stocks_rentability(stocks_history)
-        final_df = pd.concat([stocks_rentability, portfolio_rentability_data])
-        ChartSection(self.portfolio_manager).render(final_df["Ticker"].unique().tolist(), final_df)
+        portfolio = self.analyzer.analyze_portfolio(df)
+        pos_summary = self.analyzer.get_position_summary(portfolio)
+        portfolio_summary = self.analyzer.get_portfolio_summary(portfolio)
+        drawdown = self.analyzer.calculate_max_drawdown(portfolio)
+        sharpe = self.analyzer.calculate_sharpe_ratio(portfolio)
+        SummarySection().render(portfolio_summary, sharpe, drawdown, pos_summary)
+        allocations = self.analyzer.get_latest_allocations(portfolio)
+        SummarySection().render_allocation_charts(allocations)
+        ChartSection().render(portfolio["Ticker"].unique().tolist(), portfolio)
+        print(self.analyzer.get_latest_allocations(portfolio))

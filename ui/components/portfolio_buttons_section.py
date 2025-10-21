@@ -1,12 +1,18 @@
 import streamlit as st
 import pandas as pd
 import io
-from core.portfolio_manager import PortfolioManager
+from core.stock_calculator import StockCalculator
+from typing import Optional
 
 class PortfolioButtonsSection:
-    def __init__(self, portfolio_manager):
-        self.portfolio_manager = portfolio_manager
-
+    def __init__(self, calculator: Optional[StockCalculator] = None):
+            """
+            Initialize the AddStockForm with a stock calculator.
+            
+            Args:
+                calculator: Optional StockCalculator instance. Creates new one if not provided.
+            """
+            self._calculator = calculator or StockCalculator()
     def render(self):
         # --- BUTTONS SIDE BY SIDE ---
         col1, col2 = st.columns(2)
@@ -44,6 +50,7 @@ class PortfolioButtonsSection:
     def load_portfolio(self, uploaded_file):
         """Loads a CSV file into the portfolio DataFrame."""
         loaded_df = pd.read_csv(uploaded_file)
-        for ticker in loaded_df["Ticker"].unique().tolist():
-            loaded_df["Current Price"][loaded_df["Ticker"] == ticker] = self.portfolio_manager.get_stocks_current_price([ticker])[ticker]
+        all_tickers = loaded_df["Ticker"].unique().tolist()
+        price_dict = self._calculator.get_current_prices(all_tickers)
+        loaded_df.loc[:, "Current Price"] = loaded_df["Ticker"].map(price_dict)
         st.session_state.portfolio = loaded_df
