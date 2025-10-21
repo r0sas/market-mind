@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 from datetime import date
 from core.stock_calculator import StockCalculator
-from typing import Optional, Dict
+from typing import Optional
 
 
 class AddStockForm:
