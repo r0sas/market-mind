@@ -18,6 +18,7 @@ class IVSimplifier:
     ESSENTIAL_METRICS = [
         'Date',
         'Ticker',
+        'Market Cap',
         'P/E Ratio',
         'Basic EPS',
         'Free Cash Flow',
