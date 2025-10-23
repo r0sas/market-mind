@@ -3,7 +3,7 @@ import pandas as pd
 from typing import Optional, Dict, Any, List
 from datetime import date
 import logging
-from test.Config import (
+from core.Config import (
     EPS_COLUMNS, 
     BALANCE_SHEET_ITEMS, 
     CASH_FLOW_ITEMS
