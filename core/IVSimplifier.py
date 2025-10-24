@@ -2,6 +2,7 @@ import pandas as pd
 from typing import List, Optional, Tuple
 import logging
 from core.Config import ESSENTIAL_METRICS, MIN_HISTORICAL_YEARS
+from typing import Dict
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

@@ -512,36 +512,63 @@ class ValuationCalculator:
             'valuations': valuations
         }
     
-    def calculate_all_valuations(self, **kwargs) -> Dict[str, float]:
+    def calculate_all_valuations(
+        self, 
+        models_to_calculate: Optional[List[str]] = None,
+        **kwargs
+    ) -> Dict[str, float]:
         """
         Calculate all valuation models and return results.
         
         Args:
+            models_to_calculate: List of specific models to calculate.
+                               If None, calculates all models.
+                               Valid values: 'dcf', 'ddm_single_stage', 'ddm_multi_stage',
+                                           'pe_model', 'graham_value', 'asset_based'
             **kwargs: Optional parameters to pass to individual models
                      (discount_rate, terminal_growth_rate, bond_yield)
             
         Returns:
             Dictionary containing all successful valuation results
         """
-        logger.info("Calculating all valuation models...")
+        logger.info("Calculating valuation models...")
+        
+        # If no specific models requested, calculate all
+        if models_to_calculate is None:
+            models_to_calculate = [
+                'dcf', 'ddm_single_stage', 'ddm_multi_stage',
+                'pe_model', 'graham_value', 'asset_based'
+            ]
+        
+        logger.info(f"Models to calculate: {models_to_calculate}")
         
         # Extract parameters with defaults
         discount_rate = kwargs.get('discount_rate', DEFAULT_DISCOUNT_RATE)
         terminal_growth = kwargs.get('terminal_growth_rate', DEFAULT_TERMINAL_GROWTH)
         bond_yield = kwargs.get('bond_yield', DEFAULT_BOND_YIELD)
         
-        # Calculate each model
-        self.calculate_dcf(
-            discount_rate=discount_rate,
-            terminal_growth_rate=terminal_growth
-        )
-        self.calculate_ddm(
-            required_rate=discount_rate,
-            terminal_growth=terminal_growth
-        )
-        self.calculate_pe_model()
-        self.calculate_asset_based()
-        self.calculate_graham_value(bond_yield=bond_yield)
+        # Calculate each requested model
+        if 'dcf' in models_to_calculate:
+            self.calculate_dcf(
+                discount_rate=discount_rate,
+                terminal_growth_rate=terminal_growth
+            )
+        
+        # DDM models (single or multi-stage)
+        if 'ddm_single_stage' in models_to_calculate or 'ddm_multi_stage' in models_to_calculate:
+            self.calculate_ddm(
+                required_rate=discount_rate,
+                terminal_growth=terminal_growth
+            )
+        
+        if 'pe_model' in models_to_calculate:
+            self.calculate_pe_model()
+        
+        if 'asset_based' in models_to_calculate:
+            self.calculate_asset_based()
+        
+        if 'graham_value' in models_to_calculate:
+            self.calculate_graham_value(bond_yield=bond_yield)
         
         logger.info(f"Completed {len(self.results)} valuation models")
         return self.get_results()

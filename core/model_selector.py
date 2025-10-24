@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 from typing import Dict, List, Tuple, Optional
 import logging
-from code.Config import MODEL_DISPLAY_NAMES
+from core.Config import MODEL_DISPLAY_NAMES
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
