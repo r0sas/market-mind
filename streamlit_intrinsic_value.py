@@ -4,9 +4,10 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-from core.Data_fetcher import DataFetcher
-from core.IV_simplifier import IVSimplifier
+from core.DataFetcher import DataFetcher
+from core.IVSimplifier import IVSimplifier
 from core.ValuationCalculator import ValuationCalculator
+from core.model_selector import ModelSelector
 
 # ---- Sidebar ----
 st.sidebar.title("Intrinsic Value Dashboard")

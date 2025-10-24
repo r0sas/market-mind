@@ -374,13 +374,18 @@ class IVSimplifier:
     
     def get_model_selection_metrics(self) -> Dict[str, any]:
         """
-        Extract metrics specifically for intelligent model selection.
-        
-        This method provides additional calculated metrics beyond raw data
-        to help the ModelSelector determine which valuation models are appropriate.
+        Extract metrics needed for intelligent model selection
         
         Returns:
-            Dictionary with key metrics for model selection
+            {
+                'has_dividends': bool,
+                'dividend_stability': float,  # CV of dividends
+                'fcf_positive_years': int,
+                'eps_positive_years': int,
+                'is_asset_heavy': bool,
+                'payout_ratio': float,
+                # ... etc
+            }
         """
         if self.simplified_df is None:
             raise SimplifierError("No simplified data available. Call simplify() first.")

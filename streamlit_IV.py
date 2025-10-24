@@ -8,6 +8,7 @@ import time
 from core.DataFetcher import DataFetcher, DataFetcherError
 from core.IVSimplifier import IVSimplifier, SimplifierError
 from core.ValuationCalculator import ValuationCalculator, ValuationError
+from core.model_selector import ModelSelector
 from core.Config import (
     MODEL_DISPLAY_NAMES,
     DEFAULT_DISCOUNT_RATE,
