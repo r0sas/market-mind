@@ -1,7 +1,6 @@
 import pandas as pd
 from typing import List, Optional, Tuple
 import logging
-from typing import Dict, Any 
 from core.Config import ESSENTIAL_METRICS, MIN_HISTORICAL_YEARS
 
 # Configure logging
@@ -371,6 +370,77 @@ class IVSimplifier:
             report["year_range"] = f"{int(min(years))} - {int(max(years))}"
         
         return report
+    
+    def get_model_selection_metrics(self) -> Dict[str, any]:
+        """
+        Extract metrics specifically for intelligent model selection.
+        
+        This method provides additional calculated metrics beyond raw data
+        to help the ModelSelector determine which valuation models are appropriate.
+        
+        Returns:
+            Dictionary with key metrics for model selection
+        """
+        if self.simplified_df is None:
+            raise SimplifierError("No simplified data available. Call simplify() first.")
+        
+        metrics = {}
+        
+        # Dividend metrics
+        if 'Annual Dividends' in self.simplified_df.index:
+            divs = self.simplified_df.loc['Annual Dividends'].dropna()
+            metrics['has_dividends'] = len(divs) > 0 and divs.sum() > 0
+            
+            if metrics['has_dividends']:
+                divs_positive = divs[divs > 0]
+                if len(divs_positive) >= 2:
+                    # Calculate dividend consistency
+                    metrics['dividend_years'] = len(divs_positive)
+                    metrics['total_years'] = len(self.simplified_df.columns)
+                    
+                    # Payout ratio (if EPS available)
+                    if 'Diluted EPS' in self.simplified_df.index:
+                        eps = self.simplified_df.loc['Diluted EPS'].iloc[0]
+                        div = divs.iloc[0]
+                        if eps > 0:
+                            metrics['payout_ratio'] = div / eps
+        else:
+            metrics['has_dividends'] = False
+        
+        # Free Cash Flow metrics
+        if 'Free Cash Flow' in self.simplified_df.index:
+            fcf = self.simplified_df.loc['Free Cash Flow'].dropna()
+            metrics['fcf_years'] = len(fcf)
+            metrics['fcf_positive_years'] = (fcf > 0).sum()
+            
+            if len(fcf) > 0:
+                metrics['fcf_consistency'] = (fcf > 0).sum() / len(fcf)
+        
+        # EPS metrics
+        eps_metric = 'Diluted EPS' if 'Diluted EPS' in self.simplified_df.index else 'Basic EPS'
+        if eps_metric in self.simplified_df.index:
+            eps = self.simplified_df.loc[eps_metric].dropna()
+            metrics['eps_years'] = len(eps)
+            metrics['eps_positive_years'] = (eps > 0).sum()
+            
+            if len(eps) > 0:
+                metrics['eps_consistency'] = (eps > 0).sum() / len(eps)
+        
+        # Balance sheet health
+        if 'Total Assets' in self.simplified_df.index and 'Total Liabilities Net Minority Interest' in self.simplified_df.index:
+            assets = self.simplified_df.loc['Total Assets'].iloc[0]
+            liabilities = self.simplified_df.loc['Total Liabilities Net Minority Interest'].iloc[0]
+            
+            if assets > 0:
+                metrics['asset_quality'] = (assets - liabilities) / assets
+        
+        # Profitability
+        if 'Net Income' in self.simplified_df.index:
+            net_income = self.simplified_df.loc['Net Income'].dropna()
+            metrics['profitable_years'] = (net_income > 0).sum()
+            metrics['total_years_income'] = len(net_income)
+        
+        return metrics
     
     def display_summary(self) -> None:
         """Display a summary of the simplified data"""

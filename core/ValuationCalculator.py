@@ -374,8 +374,8 @@ class ValuationCalculator:
             
             book_value_per_share = (total_assets - total_liabilities) / shares_outstanding
             
-            if book_value_per_share < 0:
-                model_warnings.append("Negative book value (liabilities exceed assets)")
+            if book_value_per_share <= 0:
+                model_warnings.append("Book value is negative (liabilities exceed assets)")
             
             self.results['asset_based'] = book_value_per_share
             self.confidence_scores['asset_based'] = 'Medium'
@@ -431,30 +431,23 @@ class ValuationCalculator:
                 self.model_warnings['graham_value'] = model_warnings
                 return None
             
-            # Calculate growth rate (as decimal, will convert to percentage for formula)
+            # Calculate growth rate in percentage
             growth_rate_decimal = (eps_latest / eps_earliest) ** (1 / n_years) - 1
-            growth_rate_percent = growth_rate_decimal * 100
+            growth_rate_pct = growth_rate_decimal * 100
             
             # Graham suggested capping growth at reasonable levels
-            if growth_rate_percent > 25:
-                model_warnings.append(
-                    f"Growth rate ({growth_rate_percent:.1f}%) capped at 25% for Graham formula"
-                )
-                growth_rate_percent = 25
+            if growth_rate_pct > 20:
+                model_warnings.append(f"Growth rate ({growth_rate_pct:.1f}%) capped at 20% for Graham formula")
+                growth_rate_pct = 20
             
-            if growth_rate_percent < 0:
-                model_warnings.append("Negative growth rate; using 0% for Graham formula")
-                growth_rate_percent = 0
-            
-            # Apply Graham Formula: V = EPS × (8.5 + 2g) × (4.4 / Y)
-            # Y is bond yield as percentage (e.g., 5.21 for 5.21%)
-            value = eps * (8.5 + 2 * growth_rate_percent) * (4.4 / (bond_yield * 100))
+            # Apply Graham Formula
+            value = eps * (8.5 + 2 * growth_rate_pct) * (4.4 / (bond_yield * 100))
             
             self.results['graham_value'] = value
             self.confidence_scores['graham_value'] = 'Medium'
             self.model_warnings['graham_value'] = model_warnings
             
-            logger.info(f"Graham Value: ${value:.2f} (Growth: {growth_rate_percent:.1f}%)")
+            logger.info(f"Graham Value: ${value:.2f} (Growth: {growth_rate_pct:.1f}%)")
             return value
             
         except (KeyError, IndexError, ZeroDivisionError) as e:
@@ -469,68 +462,55 @@ class ValuationCalculator:
         base_value: Optional[float] = None,
         range_pct: float = 0.2,
         steps: int = 5
-    ) -> pd.DataFrame:
+    ) -> Dict[str, List[float]]:
         """
         Perform sensitivity analysis on a valuation model.
         
         Args:
-            model: Model to test ('dcf', 'ddm', 'graham')
+            model: Model to analyze ('dcf', 'ddm_multi_stage', 'graham_value')
             param: Parameter to vary ('discount_rate', 'terminal_growth', 'growth_rate')
             base_value: Base value for parameter (uses default if None)
-            range_pct: Percentage range to test (+/- from base)
-            steps: Number of steps in each direction
+            range_pct: Percentage range to vary parameter (default 20%)
+            steps: Number of steps in each direction (default 5)
             
         Returns:
-            DataFrame with parameter values and resulting valuations
+            Dictionary with parameter values and corresponding valuations
         """
         if base_value is None:
-            if param == 'discount_rate':
-                base_value = DEFAULT_DISCOUNT_RATE
-            elif param == 'terminal_growth':
-                base_value = DEFAULT_TERMINAL_GROWTH
-            elif param == 'growth_rate':
-                # Use historical growth
-                if model == 'dcf' and "Free Cash Flow" in self.df.index:
-                    fcf = self.df.loc["Free Cash Flow"]
-                    base_value = (fcf.iloc[0] / fcf.iloc[-1]) ** (1 / (len(fcf) - 1)) - 1
-                else:
-                    base_value = 0.10
+            base_value = DEFAULT_DISCOUNT_RATE if param == 'discount_rate' else DEFAULT_TERMINAL_GROWTH
         
         # Generate parameter range
-        min_val = base_value * (1 - range_pct)
-        max_val = base_value * (1 + range_pct)
-        param_values = np.linspace(min_val, max_val, steps * 2 + 1)
+        param_values = np.linspace(
+            base_value * (1 - range_pct),
+            base_value * (1 + range_pct),
+            steps * 2 + 1
+        )
         
-        results = []
-        for val in param_values:
-            kwargs = {}
-            if param == 'discount_rate':
-                kwargs['discount_rate'] = val
-            elif param == 'terminal_growth':
-                kwargs['terminal_growth_rate'] = val
-            elif param == 'growth_rate':
-                kwargs['custom_growth_rate'] = val
-            
-            # Calculate valuation
+        valuations = []
+        
+        for param_val in param_values:
             if model == 'dcf':
-                intrinsic_val = self.calculate_dcf(**kwargs)
-            elif model == 'ddm':
                 if param == 'discount_rate':
-                    kwargs = {'required_rate': val}
-                intrinsic_val = self.calculate_ddm(**kwargs)
-            elif model == 'graham':
-                intrinsic_val = self.calculate_graham_value()
+                    val = self.calculate_dcf(discount_rate=param_val)
+                elif param == 'terminal_growth':
+                    val = self.calculate_dcf(terminal_growth_rate=param_val)
+                else:
+                    val = self.calculate_dcf(custom_growth_rate=param_val)
+            elif model == 'ddm_multi_stage':
+                if param == 'discount_rate':
+                    val = self.calculate_ddm(required_rate=param_val)
+                else:
+                    val = self.calculate_ddm(terminal_growth=param_val)
             else:
-                intrinsic_val = None
+                val = None
             
-            results.append({
-                'parameter_value': val,
-                'parameter_pct': val * 100 if val < 1 else val,
-                'intrinsic_value': intrinsic_val,
-                'change_pct': ((intrinsic_val / self.current_price - 1) * 100) if intrinsic_val and self.current_price else None
-            })
+            valuations.append(val if val is not None else 0)
         
-        return pd.DataFrame(results)
+        return {
+            'parameter': param,
+            'values': param_values.tolist(),
+            'valuations': valuations
+        }
     
     def calculate_all_valuations(self, **kwargs) -> Dict[str, float]:
         """
@@ -538,17 +518,30 @@ class ValuationCalculator:
         
         Args:
             **kwargs: Optional parameters to pass to individual models
+                     (discount_rate, terminal_growth_rate, bond_yield)
             
         Returns:
             Dictionary containing all successful valuation results
         """
         logger.info("Calculating all valuation models...")
         
-        self.calculate_dcf(**kwargs)
-        self.calculate_ddm(**kwargs)
+        # Extract parameters with defaults
+        discount_rate = kwargs.get('discount_rate', DEFAULT_DISCOUNT_RATE)
+        terminal_growth = kwargs.get('terminal_growth_rate', DEFAULT_TERMINAL_GROWTH)
+        bond_yield = kwargs.get('bond_yield', DEFAULT_BOND_YIELD)
+        
+        # Calculate each model
+        self.calculate_dcf(
+            discount_rate=discount_rate,
+            terminal_growth_rate=terminal_growth
+        )
+        self.calculate_ddm(
+            required_rate=discount_rate,
+            terminal_growth=terminal_growth
+        )
         self.calculate_pe_model()
         self.calculate_asset_based()
-        self.calculate_graham_value(**kwargs)
+        self.calculate_graham_value(bond_yield=bond_yield)
         
         logger.info(f"Completed {len(self.results)} valuation models")
         return self.get_results()
@@ -558,11 +551,11 @@ class ValuationCalculator:
         return self.results.copy()
     
     def get_confidence_scores(self) -> Dict[str, str]:
-        """Get confidence scores for each model."""
+        """Get confidence scores for all calculated models."""
         return self.confidence_scores.copy()
     
     def get_model_warnings(self) -> Dict[str, List[str]]:
-        """Get warnings for each model."""
+        """Get warnings for all models."""
         return self.model_warnings.copy()
     
     def get_average_valuation(self, weighted: bool = False) -> Optional[float]:
@@ -570,7 +563,7 @@ class ValuationCalculator:
         Calculate average of all valuation models.
         
         Args:
-            weighted: If True, weight by confidence scores
+            weighted: If True, weight by confidence scores (High=3, Medium=2, Low=1)
             
         Returns:
             Average intrinsic value, or None if no valuations available
@@ -578,17 +571,16 @@ class ValuationCalculator:
         if not self.results:
             return None
         
-        if not weighted or not self.confidence_scores:
+        if not weighted:
             return sum(self.results.values()) / len(self.results)
         
-        # Weighted average based on confidence
-        weights = {'High': 3, 'Medium': 2, 'Low': 1}
+        # Weighted average
+        confidence_weights = {'High': 3, 'Medium': 2, 'Low': 1}
         total_value = 0
         total_weight = 0
         
         for model, value in self.results.items():
-            confidence = self.confidence_scores.get(model, 'Medium')
-            weight = weights.get(confidence, 2)
+            weight = confidence_weights.get(self.confidence_scores.get(model, 'Medium'), 2)
             total_value += value * weight
             total_weight += weight
         
@@ -608,7 +600,7 @@ class ValuationCalculator:
             Dictionary with margin of safety analysis
         """
         if self.current_price is None:
-            logger.warning("Current price not available for margin of safety calculation")
+            logger.warning("Current price not available")
             return None
         
         if not self.results:
@@ -626,38 +618,19 @@ class ValuationCalculator:
                 'margin_of_safety': margin,
                 'is_undervalued': margin >= target_margin,
                 'target_buy_price': buy_price,
-                'confidence': self.confidence_scores.get(model, 'Medium'),
+                'confidence': self.confidence_scores.get(model, 'N/A'),
                 'warnings': self.model_warnings.get(model, [])
             }
         
         return analysis
     
-    def get_comprehensive_report(self) -> Dict[str, any]:
-        """
-        Get a comprehensive valuation report.
-        
-        Returns:
-            Dictionary with complete valuation analysis
-        """
-        report = {
-            'valuations': self.get_results(),
-            'average_valuation': self.get_average_valuation(),
-            'weighted_average': self.get_average_valuation(weighted=True),
-            'current_price': self.current_price,
-            'confidence_scores': self.get_confidence_scores(),
-            'model_warnings': self.get_model_warnings(),
-            'margin_of_safety': self.get_margin_of_safety()
-        }
-        
-        return report
-    
-    def print_results(self, show_margin_of_safety: bool = True, show_warnings: bool = True):
+    def print_results(self, show_margin_of_safety: bool = True, show_confidence: bool = True):
         """
         Print all valuation results in a formatted way.
         
         Args:
             show_margin_of_safety: Whether to show margin of safety analysis
-            show_warnings: Whether to show model warnings
+            show_confidence: Whether to show confidence scores
         """
         print("\n" + "="*70)
         print("INTRINSIC VALUATION RESULTS")
@@ -667,57 +640,65 @@ class ValuationCalculator:
             print("No valuation results available")
             return
         
-        from Config import MODEL_DISPLAY_NAMES
+        models = {
+            'dcf': 'DCF Intrinsic Value per Share',
+            'ddm_single_stage': 'DDM Single-Stage Value per Share', 
+            'ddm_multi_stage': 'DDM Multi-Stage Value per Share',
+            'pe_model': 'P/E Model Intrinsic Value',
+            'asset_based': 'Asset-Based Value per Share',
+            'graham_value': 'Modern Graham Value per Share'
+        }
         
-        for key, description in MODEL_DISPLAY_NAMES.items():
+        for key, description in models.items():
             if key in self.results:
                 value = self.results[key]
                 confidence = self.confidence_scores.get(key, 'N/A')
-                print(f"{description:.<45} ${value:>10,.2f}  [{confidence}]")
+                
+                if show_confidence:
+                    print(f"{description:.<45} ${value:>10,.2f}  [{confidence}]")
+                else:
+                    print(f"{description:.<50} ${value:>10,.2f}")
         
         avg_value = self.get_average_valuation()
         weighted_avg = self.get_average_valuation(weighted=True)
         
         if avg_value:
-            print(f"\n{'Average Intrinsic Value':.<45} ${avg_value:>10,.2f}")
-        if weighted_avg and weighted_avg != avg_value:
-            print(f"{'Weighted Average (by confidence)':.<45} ${weighted_avg:>10,.2f}")
+            print(f"\n{'Simple Average Intrinsic Value':.<50} ${avg_value:>10,.2f}")
+        if weighted_avg:
+            print(f"{'Confidence-Weighted Average':.<50} ${weighted_avg:>10,.2f}")
         
         if self.current_price:
-            print(f"{'Current Market Price':.<45} ${self.current_price:>10,.2f}")
+            print(f"{'Current Market Price':.<50} ${self.current_price:>10,.2f}")
         
         # Show warnings
-        if show_warnings and self.model_warnings:
-            has_warnings = any(warnings for warnings in self.model_warnings.values())
-            if has_warnings:
-                print("\n" + "="*70)
-                print("MODEL WARNINGS")
-                print("="*70)
-                for model, warnings in self.model_warnings.items():
-                    if warnings:
-                        model_name = MODEL_DISPLAY_NAMES.get(model, model)
-                        print(f"\n{model_name}:")
-                        for warning in warnings:
-                            print(f"  ⚠️  {warning}")
+        if show_confidence and any(self.model_warnings.values()):
+            print("\n" + "="*70)
+            print("MODEL WARNINGS")
+            print("="*70)
+            for model, warnings in self.model_warnings.items():
+                if warnings:
+                    model_name = models.get(model, model)
+                    print(f"\n{model_name}:")
+                    for warning in warnings:
+                        print(f"  ⚠️  {warning}")
         
         # Margin of safety analysis
         if show_margin_of_safety and self.current_price:
             print("\n" + "="*70)
-            print("MARGIN OF SAFETY ANALYSIS (Target: 25%)")
+            print("MARGIN OF SAFETY ANALYSIS")
             print("="*70)
             
             margin_analysis = self.get_margin_of_safety()
             if margin_analysis:
                 for model, data in margin_analysis.items():
-                    model_name = MODEL_DISPLAY_NAMES.get(model, model)
+                    model_name = models.get(model, model)
                     margin_pct = data['margin_of_safety'] * 100
-                    confidence = data['confidence']
                     status = "✓ UNDERVALUED" if data['is_undervalued'] else "✗ OVERVALUED"
+                    confidence = data['confidence']
                     
-                    print(f"\n{model_name} [{confidence} Confidence]:")
-                    print(f"  Intrinsic Value: ${data['intrinsic_value']:,.2f}")
-                    print(f"  Margin of Safety: {margin_pct:+.1f}%  {status}")
-                    print(f"  Target Buy Price: ${data['target_buy_price']:,.2f}")
+                    print(f"\n{model_name} [{confidence}]:")
+                    print(f"  Margin of Safety: {margin_pct:+.1f}% {status}")
+                    print(f"  Target Buy Price (25% margin): ${data['target_buy_price']:,.2f}")
         
         print("="*70)
     

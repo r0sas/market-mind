@@ -206,10 +206,19 @@ if calculate_button:
             
             # Calculate valuations
             vc = ValuationCalculator(df_iv)
-            vc.calculate_all_valuations(
+            
+            # Calculate each model with appropriate parameters
+            vc.calculate_dcf(
                 discount_rate=discount_rate,
                 terminal_growth_rate=terminal_growth
             )
+            vc.calculate_ddm(
+                required_rate=discount_rate,
+                terminal_growth=terminal_growth
+            )
+            vc.calculate_pe_model()
+            vc.calculate_asset_based()
+            vc.calculate_graham_value()
             
             avg_value = vc.get_average_valuation(weighted=use_weighted_avg)
             current_price = vc.current_price
