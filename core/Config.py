@@ -80,6 +80,11 @@ CONFIDENCE_THRESHOLDS = {
     'pe_outlier_threshold': 3.0,  # Standard deviations from mean
 }
 
+# AI Insights Configuration
+ENABLE_AI_INSIGHTS = True  # Set to False to disable AI features
+GROQ_API_KEY = None  # Will be read from environment variable
+GROQ_MODEL = "llama-3.1-8b-instant"  # Fast, free Groq model
+
 # Model Selection Thresholds
 MODEL_SELECTION_THRESHOLDS = {
     'ddm_single': {
