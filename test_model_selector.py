@@ -10,8 +10,8 @@ Tests intelligent model selection with various company types:
 """
 
 import sys
-from core.Data_fetcher import DataFetcher, DataFetcherError
-from core.IV_simplifier import IVSimplifier, SimplifierError
+from core.DataFetcher import DataFetcher, DataFetcherError
+from core.IVSimplifier import IVSimplifier, SimplifierError
 from core.model_selector import ModelSelector
 from core.ValuationCalculator import ValuationCalculator
 
