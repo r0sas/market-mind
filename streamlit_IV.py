@@ -6,6 +6,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from typing import Dict, List
 import time
+import logging
 
 from core.DataFetcher import DataFetcher, DataFetcherError
 from core.IVSimplifier import IVSimplifier, SimplifierError
@@ -18,6 +19,9 @@ from core.Config import (
     DEFAULT_MARGIN_OF_SAFETY,
     MIN_HISTORICAL_YEARS
 )
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 # Page configuration
 st.set_page_config(
@@ -303,6 +307,11 @@ if calculate_button:
             for model_key, model_value in iv_values.items():
                 display_name = MODEL_DISPLAY_NAMES.get(model_key, model_key)
                 
+                # SAFETY CHECK: Skip negative or zero valuations (invalid results)
+                if model_value is None or model_value <= 0:
+                    logger.warning(f"Skipping {model_key} for {ticker}: invalid value ({model_value})")
+                    continue
+                
                 # In smart selection, show all calculated models
                 # In manual selection, only show selected models
                 if use_smart_selection or display_name in selected_models:
@@ -322,6 +331,11 @@ if calculate_button:
             if margin_analysis:
                 for model, data in margin_analysis.items():
                     display_name = MODEL_DISPLAY_NAMES.get(model, model)
+                    
+                    # SAFETY CHECK: Skip if intrinsic value is invalid
+                    if data["intrinsic_value"] is None or data["intrinsic_value"] <= 0:
+                        logger.warning(f"Skipping {model} margin analysis for {ticker}: invalid intrinsic value")
+                        continue
                     
                     # In smart selection, show all calculated models
                     # In manual selection, only show selected models
