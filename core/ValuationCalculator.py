@@ -578,8 +578,18 @@ class ValuationCalculator:
         return self.get_results()
     
     def get_results(self) -> Dict[str, float]:
-        """Get all calculated valuation results."""
-        return self.results.copy()
+        """
+        Get all calculated valuation results.
+        
+        Returns only valid (positive, non-None) results.
+        """
+        # Filter out invalid values
+        valid_results = {
+            model: value 
+            for model, value in self.results.items() 
+            if value is not None and value > 0
+        }
+        return valid_results.copy()
     
     def get_confidence_scores(self) -> Dict[str, str]:
         """Get confidence scores for all calculated models."""
@@ -629,15 +639,26 @@ class ValuationCalculator:
         if not self.results:
             return None
         
+        # Filter out invalid values (negative or None)
+        valid_results = {
+            model: value 
+            for model, value in self.results.items() 
+            if value is not None and value > 0
+        }
+        
+        if not valid_results:
+            logger.warning("No valid valuation results for averaging")
+            return None
+        
         if not weighted:
-            return sum(self.results.values()) / len(self.results)
+            return sum(valid_results.values()) / len(valid_results)
         
         # Weighted average
         confidence_weights = {'High': 3, 'Medium': 2, 'Low': 1}
         total_value = 0
         total_weight = 0
         
-        for model, value in self.results.items():
+        for model, value in valid_results.items():
             weight = confidence_weights.get(self.confidence_scores.get(model, 'Medium'), 2)
             total_value += value * weight
             total_weight += weight
@@ -655,7 +676,7 @@ class ValuationCalculator:
             target_margin: Desired margin of safety (default 25%)
             
         Returns:
-            Dictionary with margin of safety analysis
+            Dictionary with margin of safety analysis (only for valid results)
         """
         if self.current_price is None:
             logger.warning("Current price not available")
@@ -667,6 +688,11 @@ class ValuationCalculator:
         
         analysis = {}
         for model, intrinsic_value in self.results.items():
+            # Skip invalid values
+            if intrinsic_value is None or intrinsic_value <= 0:
+                logger.debug(f"Skipping margin of safety for {model}: invalid value ({intrinsic_value})")
+                continue
+            
             margin = (intrinsic_value - self.current_price) / intrinsic_value
             buy_price = intrinsic_value * (1 - target_margin)
             
@@ -680,7 +706,7 @@ class ValuationCalculator:
                 'warnings': self.model_warnings.get(model, [])
             }
         
-        return analysis
+        return analysis if analysis else None
     
     def print_results(self, show_margin_of_safety: bool = True, show_confidence: bool = True):
         """
