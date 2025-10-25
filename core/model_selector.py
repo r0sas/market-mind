@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 from typing import Dict, List, Tuple, Optional
 import logging
-from core.Config import MODEL_DISPLAY_NAMES
+from core.Config import MODEL_DISPLAY_NAMES, DEFAULT_DISCOUNT_RATE
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -511,9 +511,20 @@ class ModelSelector:
             if div_cagr <= self.THRESHOLDS['ddm_single']['max_dividend_cagr']:
                 supporting_score += 0.3
                 reasons_pass.append(f"Modest dividend growth ({div_cagr*100:.1f}% CAGR)")
+            elif div_cagr < DEFAULT_DISCOUNT_RATE:
+                # Growth is higher than ideal but still below discount rate
+                supporting_score += 0.15
+                reasons_fail.append(
+                    f"Dividend growth ({div_cagr*100:.1f}%) is above ideal (<8%) but still usable. "
+                    "Consider multi-stage model."
+                )
             else:
-                supporting_score += 0.1
-                reasons_fail.append(f"High dividend growth ({div_cagr*100:.1f}%) - consider multi-stage")
+                # Growth equals or exceeds typical discount rates - CRITICAL ISSUE
+                supporting_score += 0.0
+                reasons_fail.append(
+                    f"Dividend growth ({div_cagr*100:.1f}%) is too high for single-stage model. "
+                    "Would produce invalid results. Use multi-stage instead."
+                )
         
         # Supporting: Moderate payout ratio
         payout = self.metrics.get('payout_ratio')

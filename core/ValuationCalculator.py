@@ -589,6 +589,33 @@ class ValuationCalculator:
         """Get warnings for all models."""
         return self.model_warnings.copy()
     
+    def set_recommended_models(
+        self, 
+        model_list: List[str], 
+        fit_scores: Dict[str, float]
+    ) -> None:
+        """
+        Store which models are recommended for this company.
+        
+        This method is used to track which models were selected by the
+        ModelSelector for display and reporting purposes.
+        
+        Args:
+            model_list: List of recommended model keys (e.g., ['dcf', 'pe_model'])
+            fit_scores: Dictionary of fit scores for each model
+        """
+        self.recommended_models = model_list
+        self.model_fit_scores = fit_scores
+        logger.info(f"Set recommended models: {model_list}")
+    
+    def get_recommended_models(self) -> List[str]:
+        """Get list of recommended models."""
+        return self.recommended_models.copy()
+    
+    def get_model_fit_scores(self) -> Dict[str, float]:
+        """Get fit scores for all models."""
+        return self.model_fit_scores.copy()
+    
     def get_average_valuation(self, weighted: bool = False) -> Optional[float]:
         """
         Calculate average of all valuation models.
