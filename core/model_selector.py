@@ -28,7 +28,7 @@ class ModelSelector:
     THRESHOLDS = {
         'ddm_single': {
             'min_dividend_years': 5,
-            'max_dividend_cagr': 0.08,  # 8%
+            'max_dividend_cagr': 0.07,  # 7% (stricter)
             'min_payout_ratio': 0.30,
             'max_payout_ratio': 0.70,
             'min_dividend_consistency': 0.7  # 70% of years must have dividends
@@ -511,19 +511,20 @@ class ModelSelector:
             if div_cagr <= self.THRESHOLDS['ddm_single']['max_dividend_cagr']:
                 supporting_score += 0.3
                 reasons_pass.append(f"Modest dividend growth ({div_cagr*100:.1f}% CAGR)")
-            elif div_cagr < DEFAULT_DISCOUNT_RATE:
-                # Growth is higher than ideal but still below discount rate
-                supporting_score += 0.15
+            elif div_cagr < 0.10:  # Less than 10%
+                # Growth is higher than ideal but might work with high discount rate
+                supporting_score += 0.1
                 reasons_fail.append(
-                    f"Dividend growth ({div_cagr*100:.1f}%) is above ideal (<8%) but still usable. "
-                    "Consider multi-stage model."
+                    f"Dividend growth ({div_cagr*100:.1f}%) is above ideal (<8%). "
+                    "Multi-stage model recommended."
                 )
             else:
-                # Growth equals or exceeds typical discount rates - CRITICAL ISSUE
+                # Growth >= 10% - CRITICAL: Will likely fail with standard discount rates
                 supporting_score += 0.0
+                primary_score *= 0.5  # MAJOR PENALTY: Cut primary score in half
                 reasons_fail.append(
                     f"Dividend growth ({div_cagr*100:.1f}%) is too high for single-stage model. "
-                    "Would produce invalid results. Use multi-stage instead."
+                    "Would produce invalid results with standard discount rates. Use multi-stage instead."
                 )
         
         # Supporting: Moderate payout ratio

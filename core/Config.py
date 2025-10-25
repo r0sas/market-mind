@@ -84,7 +84,7 @@ CONFIDENCE_THRESHOLDS = {
 MODEL_SELECTION_THRESHOLDS = {
     'ddm_single': {
         'min_dividend_years': 5,
-        'max_dividend_cagr': 0.08,  # 8%
+        'max_dividend_cagr': 0.07,  # 7% (stricter - was 8%)
         'min_payout_ratio': 0.30,
         'max_payout_ratio': 0.70,
         'min_dividend_consistency': 0.7
