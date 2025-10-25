@@ -1,3 +1,5 @@
+# streamlit_intrinsic_value_v4.py
+
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -80,14 +82,46 @@ def create_sensitivity_plot(sensitivity_data: Dict, model_name: str):
 st.sidebar.title("📊 Intrinsic Value Dashboard")
 st.sidebar.markdown("---")
 
-st.sidebar.subheader("Model Selection")
-all_models = list(MODEL_DISPLAY_NAMES.values())
-selected_models = st.sidebar.multiselect(
-    "Select Valuation Models",
-    all_models,
-    default=all_models,
-    help="Choose which valuation models to calculate and display"
-)
+# Model Selection Mode
+st.sidebar.subheader("🧭 Model Selection Mode")
+
+use_smart_selection = st.sidebar.radio(
+    "How should models be selected?",
+    options=["🤖 Auto-select (Recommended)", "✋ Manual selection"],
+    help="Auto-select uses AI to choose the best models for each company"
+) == "🤖 Auto-select (Recommended)"
+
+if use_smart_selection:
+    st.sidebar.success("✨ Smart selection enabled")
+    
+    min_fit_score = st.sidebar.slider(
+        "Minimum Model Fit Score",
+        min_value=0.3,
+        max_value=0.9,
+        value=0.5,
+        step=0.1,
+        help="Only show models scoring above this threshold (0.5 = recommended)"
+    )
+    
+    show_all_scores = st.sidebar.checkbox(
+        "Show excluded models",
+        value=False,
+        help="Display fit scores for models that didn't meet the threshold"
+    )
+    
+    selected_models = None  # Will be determined per company
+    
+else:
+    st.sidebar.info("Manual selection active")
+    
+    st.sidebar.subheader("Model Selection")
+    all_models = list(MODEL_DISPLAY_NAMES.values())
+    selected_models = st.sidebar.multiselect(
+        "Select Valuation Models",
+        all_models,
+        default=all_models,
+        help="Choose which valuation models to calculate and display"
+    )
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("Advanced Parameters")
@@ -183,6 +217,7 @@ if calculate_button:
     results = []
     margin_results = []
     all_warnings = {}
+    model_selection_info = {}  # NEW: Store model selection data
     failed_tickers = []
     
     # Progress tracking
@@ -205,21 +240,43 @@ if calculate_button:
             quality_report = simplifier.get_data_quality_report()
             all_warnings[ticker] = quality_report.get('warnings', [])
             
+            # NEW: Model Selection Logic
+            if use_smart_selection:
+                selector = ModelSelector(df_iv)
+                fit_scores = selector.calculate_fit_scores()
+                recommended = selector.get_recommended_models(min_score=min_fit_score)
+                explanations = selector.get_fit_explanations()
+                exclusions = selector.get_exclusion_reasons()
+                
+                # Store for visualization
+                model_selection_info[ticker] = {
+                    'fit_scores': fit_scores,
+                    'recommended': recommended,
+                    'explanations': explanations,
+                    'exclusions': exclusions,
+                    'selector': selector  # Store for later use
+                }
+                
+                models_to_calculate = recommended
+                
+                if not models_to_calculate:
+                    st.warning(
+                        f"⚠️ {ticker}: No models meet minimum fit score ({min_fit_score:.1f}). "
+                        f"Try lowering the threshold or check data quality."
+                    )
+                    continue
+            else:
+                # Manual selection
+                model_name_map = {v: k for k, v in MODEL_DISPLAY_NAMES.items()}
+                models_to_calculate = [model_name_map[m] for m in selected_models if m in model_name_map]
+            
             # Calculate valuations
             vc = ValuationCalculator(df_iv)
-            
-            # Calculate each model with appropriate parameters
-            vc.calculate_dcf(
+            vc.calculate_all_valuations(
+                models_to_calculate=models_to_calculate,
                 discount_rate=discount_rate,
                 terminal_growth_rate=terminal_growth
             )
-            vc.calculate_ddm(
-                required_rate=discount_rate,
-                terminal_growth=terminal_growth
-            )
-            vc.calculate_pe_model()
-            vc.calculate_asset_based()
-            vc.calculate_graham_value()
             
             avg_value = vc.get_average_valuation(weighted=use_weighted_avg)
             current_price = vc.current_price
@@ -228,9 +285,6 @@ if calculate_button:
             model_warnings = vc.get_model_warnings()
             margin_analysis = vc.get_margin_of_safety(target_margin=margin_of_safety_pct)
             
-            # Reverse model name mapping
-            model_name_map = {v: k for k, v in MODEL_DISPLAY_NAMES.items()}
-            
             # Prepare intrinsic value results
             iv_filtered = {
                 "Ticker": ticker,
@@ -238,12 +292,24 @@ if calculate_button:
                 "Years of Data": quality_report.get('num_years', 'N/A')
             }
             
-            for display_name in selected_models:
-                key = model_name_map.get(display_name)
-                if key and key in iv_values:
-                    iv_filtered[display_name] = iv_values[key]
-                    if show_confidence and key in confidence_scores:
-                        iv_filtered[f"{display_name}_Confidence"] = confidence_scores[key]
+            # Add model selection info if smart selection is enabled
+            if use_smart_selection:
+                iv_filtered["Models Used"] = len(models_to_calculate)
+            
+            # Reverse mapping for display names
+            model_name_map = {v: k for k, v in MODEL_DISPLAY_NAMES.items()}
+            
+            # Add valuation results to display
+            for model_key, model_value in iv_values.items():
+                display_name = MODEL_DISPLAY_NAMES.get(model_key, model_key)
+                
+                # In smart selection, show all calculated models
+                # In manual selection, only show selected models
+                if use_smart_selection or display_name in selected_models:
+                    iv_filtered[display_name] = model_value
+                    
+                    if show_confidence and model_key in confidence_scores:
+                        iv_filtered[f"{display_name}_Confidence"] = confidence_scores[model_key]
             
             # Add average
             if avg_value:
@@ -256,7 +322,10 @@ if calculate_button:
             if margin_analysis:
                 for model, data in margin_analysis.items():
                     display_name = MODEL_DISPLAY_NAMES.get(model, model)
-                    if display_name in selected_models:
+                    
+                    # In smart selection, show all calculated models
+                    # In manual selection, only show selected models
+                    if use_smart_selection or display_name in selected_models:
                         margin_results.append({
                             "Ticker": ticker,
                             "Model": display_name,
@@ -310,11 +379,11 @@ if calculate_button:
         df_display = df_iv_results[value_cols].set_index("Ticker")
         
         # Create formatted version for display
-        format_dict = {col: "${:,.2f}" for col in df_display.columns if col not in ["Years of Data"]}
+        format_dict = {col: "${:,.2f}" for col in df_display.columns if col not in ["Years of Data", "Models Used"]}
         
         st.dataframe(
             df_display.style.format(format_dict).background_gradient(
-                subset=[col for col in df_display.columns if col != "Years of Data"],
+                subset=[col for col in df_display.columns if col not in ["Years of Data", "Models Used"]],
                 cmap="RdYlGn",
                 axis=1
             ),
@@ -350,7 +419,7 @@ if calculate_button:
         st.markdown("### 📊 Intrinsic Value Comparison")
         
         # Prepare data for plotting
-        plot_cols = [col for col in df_display.columns if col not in ["Years of Data", "Current Price"]]
+        plot_cols = [col for col in df_display.columns if col not in ["Years of Data", "Current Price", "Models Used"]]
         df_plot = df_iv_results[["Ticker"] + plot_cols].melt(
             id_vars="Ticker",
             var_name="Model",
@@ -381,6 +450,180 @@ if calculate_button:
         
         fig.update_layout(height=500)
         st.plotly_chart(fig, use_container_width=True)
+        
+        st.markdown("---")
+        
+        # ---- Model Selection Analysis (NEW SECTION) ----
+        if use_smart_selection and model_selection_info:
+            st.markdown("### 🧭 Model Selection Analysis")
+            st.markdown("*Understanding why specific models were chosen for each company*")
+            
+            for ticker, info in model_selection_info.items():
+                with st.expander(f"📊 {ticker} - Model Selection Details", expanded=False):
+                    
+                    # Create fit score dataframe
+                    fit_data = []
+                    for model, score in info['fit_scores'].items():
+                        model_display = MODEL_DISPLAY_NAMES.get(model, model)
+                        is_recommended = model in info['recommended']
+                        
+                        # Determine status
+                        if score >= 0.7:
+                            status_emoji = "🟢"
+                            status_text = "Highly Recommended"
+                        elif score >= 0.5:
+                            status_emoji = "🟡"
+                            status_text = "Recommended"
+                        elif score >= 0.3:
+                            status_emoji = "🟠"
+                            status_text = "Marginal"
+                        else:
+                            status_emoji = "🔴"
+                            status_text = "Not Suitable"
+                        
+                        fit_data.append({
+                            'Model': model_display,
+                            'Fit Score': score,
+                            'Status': f"{status_emoji} {status_text}",
+                            'Selected': '✅' if is_recommended else '❌',
+                            'Score_Numeric': score
+                        })
+                    
+                    fit_df = pd.DataFrame(fit_data).sort_values('Score_Numeric', ascending=False)
+                    
+                    # Layout: Chart on left, metrics on right
+                    col1, col2 = st.columns([2, 1])
+                    
+                    with col1:
+                        # Horizontal bar chart of fit scores
+                        fig_fit = go.Figure()
+                        
+                        # Add bars with color based on score
+                        colors = []
+                        for score in fit_df['Score_Numeric']:
+                            if score >= 0.7:
+                                colors.append('#28a745')  # Green
+                            elif score >= 0.5:
+                                colors.append('#ffc107')  # Yellow
+                            elif score >= 0.3:
+                                colors.append('#fd7e14')  # Orange
+                            else:
+                                colors.append('#dc3545')  # Red
+                        
+                        fig_fit.add_trace(go.Bar(
+                            y=fit_df['Model'],
+                            x=fit_df['Fit Score'],
+                            orientation='h',
+                            marker=dict(color=colors),
+                            text=fit_df['Fit Score'].apply(lambda x: f'{x:.2f}'),
+                            textposition='outside',
+                            hovertemplate='<b>%{y}</b><br>Fit Score: %{x:.2f}<extra></extra>'
+                        ))
+                        
+                        # Add threshold line
+                        fig_fit.add_vline(
+                            x=min_fit_score,
+                            line_dash="dash",
+                            line_color="orange",
+                            line_width=2,
+                            annotation_text=f"Threshold ({min_fit_score:.1f})",
+                            annotation_position="top right"
+                        )
+                        
+                        fig_fit.update_layout(
+                            title=f"{ticker} - Model Fit Scores",
+                            xaxis_title="Fit Score (0.0 - 1.0)",
+                            yaxis_title="",
+                            height=350,
+                            showlegend=False,
+                            xaxis=dict(range=[0, 1.1])
+                        )
+                        
+                        st.plotly_chart(fig_fit, use_container_width=True)
+                    
+                    with col2:
+                        # Summary metrics
+                        st.metric(
+                            "Models Selected",
+                            len(info['recommended']),
+                            f"of {len(info['fit_scores'])}"
+                        )
+                        
+                        st.markdown("**Score Legend:**")
+                        st.markdown("🟢 **0.70+** Highly Recommended")
+                        st.markdown("🟡 **0.50-0.69** Recommended")
+                        st.markdown("🟠 **0.30-0.49** Marginal")
+                        st.markdown("🔴 **<0.30** Not Suitable")
+                        
+                        st.markdown("---")
+                        
+                        # Quick stats
+                        avg_score = sum(info['fit_scores'].values()) / len(info['fit_scores'])
+                        st.metric("Average Fit Score", f"{avg_score:.2f}")
+                    
+                    # Detailed explanations
+                    st.markdown("---")
+                    st.markdown("#### 📋 Detailed Analysis")
+                    
+                    # Show recommended models with explanations
+                    if info['recommended']:
+                        st.markdown("**✅ Selected Models:**")
+                        
+                        for model in info['recommended']:
+                            model_display = MODEL_DISPLAY_NAMES.get(model, model)
+                            score = info['fit_scores'][model]
+                            
+                            with st.container():
+                                # Model header with score badge
+                                col_a, col_b = st.columns([3, 1])
+                                with col_a:
+                                    st.markdown(f"**{model_display}**")
+                                with col_b:
+                                    if score >= 0.7:
+                                        st.success(f"Score: {score:.2f}")
+                                    else:
+                                        st.warning(f"Score: {score:.2f}")
+                                
+                                # Explanations
+                                if model in info['explanations']:
+                                    exp = info['explanations'][model]
+                                    
+                                    if exp['pass']:
+                                        st.markdown("*Strengths:*")
+                                        for reason in exp['pass']:
+                                            st.markdown(f"✓ {reason}")
+                                    
+                                    if exp['fail']:
+                                        st.markdown("*Considerations:*")
+                                        for reason in exp['fail']:
+                                            st.markdown(f"⚠ {reason}")
+                                
+                                st.markdown("")  # Spacing
+                    
+                    # Show excluded models if requested
+                    if show_all_scores and info['exclusions']:
+                        st.markdown("---")
+                        st.markdown("**❌ Excluded Models:**")
+                        
+                        for model, reason in info['exclusions'].items():
+                            model_display = MODEL_DISPLAY_NAMES.get(model, model)
+                            score = info['fit_scores'].get(model, 0.0)
+                            
+                            with st.expander(f"{model_display} (Fit: {score:.2f})"):
+                                st.error(f"**Primary Reason:** {reason}")
+                                
+                                if model in info['explanations']:
+                                    exp = info['explanations'][model]
+                                    
+                                    if exp['fail']:
+                                        st.markdown("**Issues Identified:**")
+                                        for detail in exp['fail']:
+                                            st.markdown(f"• {detail}")
+                                    
+                                    if exp['pass']:
+                                        st.markdown("**Positive Factors:**")
+                                        for detail in exp['pass']:
+                                            st.markdown(f"• {detail}")
         
         st.markdown("---")
         
@@ -544,6 +787,7 @@ PARAMETERS:
 - Discount Rate: {discount_rate*100:.1f}%
 - Terminal Growth: {terminal_growth*100:.1f}%
 - Target Margin of Safety: {margin_of_safety_pct*100:.1f}%
+- Selection Mode: {'Auto-select' if use_smart_selection else 'Manual'}
 
 INTRINSIC VALUES:
 {df_iv_results.to_string()}
@@ -584,31 +828,50 @@ with st.expander("ℹ️ About the Valuation Models"):
     - Projects future free cash flows and discounts them to present value
     - Best for: Companies with stable, positive cash flows
     - Limitations: Sensitive to growth rate assumptions
+    - **Auto-Selected When:** Company has positive FCF in 60%+ of years
     
     **2. Dividend Discount Model (DDM)**
     - Values stock based on present value of future dividends
+    - **Single-Stage:** For stable dividend payers (growth <8%)
+    - **Multi-Stage:** For growing dividend payers (growth ≥8%)
     - Best for: Dividend-paying companies with consistent payouts
     - Limitations: Not applicable to non-dividend stocks
+    - **Auto-Selected When:** Company pays dividends consistently
     
     **3. P/E Multiplier Model**
     - Uses average historical P/E ratio × current EPS
     - Best for: Stable, profitable companies
     - Limitations: Unreliable with volatile earnings
+    - **Auto-Selected When:** Positive earnings in 60%+ of years, reasonable P/E range
     
     **4. Asset-Based Valuation**
     - Book value (Total Assets - Total Liabilities) per share
-    - Best for: Asset-heavy companies, value investing
+    - Best for: Asset-heavy companies, value investing, distressed situations
     - Limitations: Ignores intangible value and future earnings
+    - **Auto-Selected When:** Low profitability but strong asset base
     
     **5. Modern Graham Formula**
     - Benjamin Graham's formula adjusted for bond yields
     - Best for: Conservative valuation estimate
     - Limitations: May undervalue high-growth companies
+    - **Auto-Selected When:** 5+ years of profitability, strong ROE, low debt
     
-    ### Confidence Scores
+    ### Confidence Scores (Model Quality)
     - **High**: Model has reliable inputs and low volatility
     - **Medium**: Model is usable but has some concerns
     - **Low**: Model results should be interpreted cautiously
+    
+    ### Fit Scores (Model Appropriateness) 🆕
+    Smart selection uses fit scores to determine which models are appropriate:
+    - **0.70-1.00**: Highly recommended - All criteria met
+    - **0.50-0.69**: Recommended - Most criteria met
+    - **0.30-0.49**: Marginal - Some concerns exist
+    - **0.00-0.29**: Not suitable - Critical criteria missing
+    
+    The fit score considers:
+    - **Primary Criteria (50%)**: Core requirements (e.g., has dividends for DDM)
+    - **Supporting Criteria (30%)**: Quality indicators (growth, stability)
+    - **Data Quality (20%)**: Years of history, completeness
     
     ### Margin of Safety
     The margin of safety represents the discount from intrinsic value. 
@@ -617,13 +880,27 @@ with st.expander("ℹ️ About the Valuation Models"):
 
 with st.expander("❓ FAQ"):
     st.markdown("""
+    **Q: What's the difference between Confidence Scores and Fit Scores?**  
+    A: 
+    - **Fit Score**: Measures if the model is *appropriate* for this company (e.g., does it pay dividends for DDM?)
+    - **Confidence Score**: Measures how *reliable* the model's output is (e.g., is the data volatile?)
+    
     **Q: Why do different models give different values?**  
     A: Each model uses different assumptions and inputs. This is normal and expected. 
     Look at the range and average for a balanced view.
     
-    **Q: What if some models show "N/A"?**  
-    A: Some models require specific data (e.g., DDM needs dividends). If data is missing, 
-    that model cannot be calculated.
+    **Q: What if some models show "N/A" or are excluded?**  
+    A: Some models require specific data (e.g., DDM needs dividends). If data is missing 
+    or the company doesn't fit the model's criteria, it won't be calculated.
+    
+    **Q: Should I use Auto-select or Manual selection?**  
+    A: 
+    - **Auto-select (Recommended)**: Let the system choose based on financial analysis. Best for most users.
+    - **Manual**: Override if you have specific models you want to see, or for educational comparison.
+    
+    **Q: Why are fewer models selected with Smart Selection?**  
+    A: That's the point! Smart selection only shows models that are truly appropriate for the company.
+    Showing fewer, more relevant models is better than showing all models with some being meaningless.
     
     **Q: How should I use these valuations?**  
     A: These are estimates, not guarantees. Use them as one input in your investment 
@@ -640,6 +917,14 @@ with st.expander("❓ FAQ"):
     - REITs (different valuation approach needed)
     - Financial companies (banks, insurance)
     - High-growth startups (no profits yet)
+    
+    **Q: What if NO models are selected for my stock?**  
+    A: This means the company doesn't meet minimum criteria for any model. This could indicate:
+    - Very limited financial history
+    - Highly volatile or inconsistent financials
+    - Missing critical data
+    - Company may not be suitable for traditional valuation methods
+    Try lowering the fit score threshold or check data quality warnings.
     """)
 
 with st.expander("⚙️ Technical Details"):
@@ -651,6 +936,37 @@ with st.expander("⚙️ Technical Details"):
     - **Data Source**: Yahoo Finance via yfinance library
     - **Cache Duration**: 1 hour (data refreshes after this period)
     
+    ### Smart Model Selection Thresholds
+    **DCF Model:**
+    - Minimum 3 positive FCF years (60% of total)
+    - Positive revenue growth
+    - Payout ratio < 80%
+    
+    **DDM Single-Stage:**
+    - 5+ years of dividend history
+    - Dividend growth < 8% (stable)
+    - Payout ratio 30-70%
+    
+    **DDM Multi-Stage:**
+    - 3+ years of dividend history
+    - Dividend growth ≥ 8%
+    - Positive EPS growth
+    
+    **P/E Model:**
+    - 3+ years of positive earnings (60% of total)
+    - P/E ratio between 5-50
+    - P/E volatility < 1.5 (coefficient of variation)
+    
+    **Graham Formula:**
+    - 5+ years of consistent profitability
+    - ROE > 10%
+    - Debt-to-Equity < 0.5
+    
+    **Asset-Based:**
+    - Positive tangible book value
+    - Asset quality > 30% ((Assets-Liabilities)/Assets)
+    - Most relevant when net margin < 5%
+    
     ### Data Requirements
     - Minimum {MIN_HISTORICAL_YEARS} years of financial data recommended
     - Required metrics: Free Cash Flow, EPS, Share Price, Balance Sheet items
@@ -659,6 +975,7 @@ with st.expander("⚙️ Technical Details"):
     - Growth rates calculated using CAGR (Compound Annual Growth Rate)
     - P/E ratios use median to reduce impact of outliers
     - Weighted average gives more weight to high-confidence models
+    - Fit scores combine multiple criteria with 50% primary, 30% supporting, 20% data quality weights
     """)
 
 # Footer

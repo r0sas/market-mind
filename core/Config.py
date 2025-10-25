@@ -79,3 +79,50 @@ CONFIDENCE_THRESHOLDS = {
     'fcf_volatility_medium': 0.3,
     'pe_outlier_threshold': 3.0,  # Standard deviations from mean
 }
+
+# Model Selection Thresholds
+MODEL_SELECTION_THRESHOLDS = {
+    'ddm_single': {
+        'min_dividend_years': 5,
+        'max_dividend_cagr': 0.08,  # 8%
+        'min_payout_ratio': 0.30,
+        'max_payout_ratio': 0.70,
+        'min_dividend_consistency': 0.7
+    },
+    'ddm_multi': {
+        'min_dividend_years': 3,
+        'min_dividend_cagr': 0.08,
+        'min_eps_growth': 0.0
+    },
+    'dcf': {
+        'min_fcf_positive_years': 3,
+        'min_fcf_positive_ratio': 0.6,
+        'min_revenue_cagr': -0.05,
+        'max_payout_ratio': 0.80
+    },
+    'pe_model': {
+        'min_eps_positive_years': 3,
+        'min_eps_positive_ratio': 0.6,
+        'min_pe': 5,
+        'max_pe': 50,
+        'max_pe_volatility': 1.5
+    },
+    'graham': {
+        'min_eps_years': 5,
+        'min_roe': 0.10,
+        'max_debt_equity': 0.5,
+        'min_eps_positive_years': 5
+    },
+    'asset_based': {
+        'min_asset_quality': 0.3,
+        'min_tangible_book': 0.0,
+        'use_when_margin_below': 0.05
+    }
+}
+
+# Fit score weights for different criteria
+FIT_SCORE_WEIGHTS = {
+    'primary': 0.50,        # Primary criteria (e.g., "has dividends" for DDM)
+    'supporting': 0.30,     # Supporting criteria (e.g., "stable payout")
+    'data_quality': 0.20    # Data availability and quality
+}

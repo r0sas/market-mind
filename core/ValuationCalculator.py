@@ -59,17 +59,15 @@ class ValuationCalculator:
         self.confidence_scores: Dict[str, str] = {}
         self.model_warnings: Dict[str, List[str]] = {}
         self.current_price: Optional[float] = None
-        self.recommended_models: List[str] = []  # NEW
-        self.model_fit_scores: Dict[str, float] = {}  # NEW
+        
+        # NEW: Track recommended models from ModelSelector
+        self.recommended_models: List[str] = []
+        self.model_fit_scores: Dict[str, float] = {}
+        
         # Try to get current price
         if "Share Price" in self.df.index:
             self.current_price = self.df.loc["Share Price"].iloc[0]
     
-    def set_recommended_models(self, model_list: List[str], fit_scores: Dict[str, float]):
-        """Store which models are recommended for this company"""
-        self.recommended_models = model_list
-        self.model_fit_scores = fit_scores
-        
     def calculate_dcf(
         self, 
         discount_rate: float = DEFAULT_DISCOUNT_RATE, 
@@ -524,33 +522,43 @@ class ValuationCalculator:
         **kwargs
     ) -> Dict[str, float]:
         """
-        Calculate valuations. If models_to_calculate is provided,
-        only calculate those specific models.
+        Calculate all valuation models and return results.
         
         Args:
-            models_to_calculate: List of model keys to calculate 
-                            (e.g., ['dcf', 'pe_model'])
-            **kwargs: Parameters for individual models
+            models_to_calculate: List of specific models to calculate.
+                               If None, calculates all models.
+                               Valid values: 'dcf', 'ddm_single_stage', 'ddm_multi_stage',
+                                           'pe_model', 'graham_value', 'asset_based'
+            **kwargs: Optional parameters to pass to individual models
+                     (discount_rate, terminal_growth_rate, bond_yield)
+            
+        Returns:
+            Dictionary containing all successful valuation results
         """
+        logger.info("Calculating valuation models...")
+        
+        # If no specific models requested, calculate all
         if models_to_calculate is None:
-            # Calculate all models (existing behavior)
             models_to_calculate = [
                 'dcf', 'ddm_single_stage', 'ddm_multi_stage',
                 'pe_model', 'graham_value', 'asset_based'
             ]
         
-        # Extract parameters
+        logger.info(f"Models to calculate: {models_to_calculate}")
+        
+        # Extract parameters with defaults
         discount_rate = kwargs.get('discount_rate', DEFAULT_DISCOUNT_RATE)
         terminal_growth = kwargs.get('terminal_growth_rate', DEFAULT_TERMINAL_GROWTH)
         bond_yield = kwargs.get('bond_yield', DEFAULT_BOND_YIELD)
         
-        # Calculate only requested models
+        # Calculate each requested model
         if 'dcf' in models_to_calculate:
             self.calculate_dcf(
                 discount_rate=discount_rate,
                 terminal_growth_rate=terminal_growth
             )
         
+        # DDM models (single or multi-stage)
         if 'ddm_single_stage' in models_to_calculate or 'ddm_multi_stage' in models_to_calculate:
             self.calculate_ddm(
                 required_rate=discount_rate,
