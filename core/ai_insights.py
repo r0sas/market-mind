@@ -21,6 +21,7 @@ class AIInsightsGenerator:
     Generate AI-powered insights for stock valuations.
     
     Uses Groq API (free tier) with Llama 3.1 for fast, intelligent analysis.
+    Falls back to local Ollama if Groq is unavailable.
     
     Example:
         >>> generator = AIInsightsGenerator(api_key="your-key")
@@ -28,19 +29,26 @@ class AIInsightsGenerator:
         >>> print(insights)
     """
     
-    def __init__(self, api_key: Optional[str] = None, model: str = "llama-3.1-8b-instant"):
+    def __init__(
+        self, 
+        api_key: Optional[str] = None, 
+        model: str = "llama-3.1-8b-instant",
+        enable_ollama_fallback: bool = True
+    ):
         """
         Initialize AI insights generator.
         
         Args:
             api_key: Groq API key. If None, looks for GROQ_API_KEY env variable
             model: Groq model to use (default: llama-3.1-8b-instant)
+            enable_ollama_fallback: If True, use local Ollama when Groq fails
         """
         self.api_key = api_key or os.getenv("GROQ_API_KEY")
         self.model = model
+        self.enable_ollama_fallback = enable_ollama_fallback
         
         if not self.api_key:
-            logger.warning("No Groq API key found. AI insights will be disabled.")
+            logger.warning("No Groq API key found. Will try Ollama if available.")
             self.client = None
         else:
             try:

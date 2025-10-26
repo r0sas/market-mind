@@ -84,6 +84,7 @@ CONFIDENCE_THRESHOLDS = {
 ENABLE_AI_INSIGHTS = True  # Set to False to disable AI features
 GROQ_API_KEY = None  # Will be read from environment variable
 GROQ_MODEL = "llama-3.1-8b-instant"  # Fast, free Groq model
+ENABLE_OLLAMA_FALLBACK = True  # Use local Ollama if Groq fails/unavailable
 
 # Model Selection Thresholds
 MODEL_SELECTION_THRESHOLDS = {
