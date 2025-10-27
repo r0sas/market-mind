@@ -12,6 +12,8 @@ from core.IVSimplifier import IVSimplifier, SimplifierError
 from core.ValuationCalculator import ValuationCalculator, ValuationError
 from core.model_selector import ModelSelector
 from core.ai_insights import AIInsightsGenerator
+from core.ai_parameter_optimizer import AIParameterOptimizer
+from core.ai_visual_explainer import AIVisualExplainer
 from core.Config import (
     MODEL_DISPLAY_NAMES,
     DEFAULT_DISCOUNT_RATE,
@@ -107,11 +109,14 @@ st.sidebar.markdown("---")
 # Model Selection Mode
 st.sidebar.subheader(t('model_selection_mode'))
 
-use_smart_selection = st.sidebar.radio(
+selection_mode = st.sidebar.radio(
     t('model_selection_question'),
-    options=[t('auto_select'), t('manual_select')],
+    options=[t('auto_select'), t('manual_select'), "🤖 AI Mode (Smart Parameters)"],
     help=t('auto_select_help')
-) == t('auto_select')
+)
+
+use_smart_selection = selection_mode == t('auto_select')
+use_ai_mode = selection_mode == "🤖 AI Mode (Smart Parameters)"
 
 if use_smart_selection:
     st.sidebar.success(t('smart_enabled'))
@@ -130,6 +135,28 @@ if use_smart_selection:
         value=False,
         help=t('show_excluded_help')
     )
+    
+    selected_models = None
+    
+elif use_ai_mode:
+    st.sidebar.success("✨ AI Mode: Smart model selection + optimized parameters")
+    
+    min_fit_score = st.sidebar.slider(
+        t('min_fit_score'),
+        min_value=0.3,
+        max_value=0.9,
+        value=0.5,
+        step=0.1,
+        help=t('min_fit_score_help')
+    )
+    
+    show_all_scores = st.sidebar.checkbox(
+        t('show_excluded'),
+        value=False,
+        help=t('show_excluded_help')
+    )
+    
+    st.sidebar.info("💡 AI will optimize discount rate, terminal growth, and projection years for each company")
     
     selected_models = None
     
@@ -262,6 +289,7 @@ if calculate_button:
     all_warnings = {}
     model_selection_info = {}
     ai_insights = {}
+    ai_parameters = {}
     failed_tickers = []
     
     # Initialize AI generator if enabled
@@ -277,6 +305,25 @@ if calculate_button:
         except Exception as e:
             st.error(f"{t('ai_init_failed')}: {e}")
             ai_generator = None
+    
+    # Initialize AI Parameter Optimizer and Visual Explainer if in AI Mode
+    param_optimizer = None
+    visual_explainer = None
+    
+    if use_ai_mode and groq_api_key:
+        try:
+            param_optimizer = AIParameterOptimizer(api_key=groq_api_key, use_ai=True)
+            visual_explainer = AIVisualExplainer(api_key=groq_api_key)
+            st.info("🤖 AI Parameter Optimization enabled")
+        except Exception as e:
+            st.warning(f"⚠️ AI Parameter Optimization unavailable: {e}")
+            st.info("Using rule-based parameter optimization instead")
+            param_optimizer = AIParameterOptimizer(use_ai=False)
+            visual_explainer = AIVisualExplainer()
+    elif use_ai_mode:
+        param_optimizer = AIParameterOptimizer(use_ai=False)
+        visual_explainer = AIVisualExplainer()
+        st.info("Using rule-based parameter optimization (no API key)")
     
     # Progress tracking
     progress_bar = st.progress(0)
@@ -298,8 +345,49 @@ if calculate_button:
             quality_report = simplifier.get_data_quality_report()
             all_warnings[ticker] = quality_report.get('warnings', [])
             
+            # AI Mode - Optimize Parameters
+            company_discount_rate = discount_rate
+            company_terminal_growth = terminal_growth
+            
+            if use_ai_mode and param_optimizer:
+                try:
+                    temp_fetcher = DataFetcher(ticker)
+                    company_info = temp_fetcher.get_info()
+                    
+                    financial_metrics = {
+                        'beta': company_info.get('beta', 1.0),
+                        'debt_to_equity': company_info.get('debtToEquity', 0) / 100 if company_info.get('debtToEquity') else 0,
+                        'revenue_cagr': 0.10,
+                        'fcf_cagr': 0.08,
+                        'roe': company_info.get('returnOnEquity', 0),
+                        'net_margin': company_info.get('profitMargins', 0),
+                        'total_debt': company_info.get('totalDebt', 0),
+                        'interest_expense': 0,
+                        'tax_rate': 0.21
+                    }
+                    
+                    company_data = {
+                        'sector': company_info.get('sector', 'default'),
+                        'industry': company_info.get('industry', 'Unknown'),
+                        'marketCap': company_info.get('marketCap', 0)
+                    }
+                    
+                    optimized = param_optimizer.optimize_parameters(
+                        ticker, company_data, financial_metrics
+                    )
+                    
+                    ai_parameters[ticker] = optimized
+                    company_discount_rate = optimized['discount_rate']
+                    company_terminal_growth = optimized['terminal_growth']
+                    
+                    st.info(f"🤖 {ticker}: Discount Rate = {company_discount_rate:.2%}, Terminal Growth = {company_terminal_growth:.2%} ({optimized['method']})")
+                    
+                except Exception as e:
+                    logger.error(f"AI parameter optimization failed for {ticker}: {e}")
+                    st.warning(f"⚠️ Using default parameters for {ticker}")
+            
             # Model Selection Logic
-            if use_smart_selection:
+            if use_smart_selection or use_ai_mode:
                 selector = ModelSelector(df_iv)
                 fit_scores = selector.calculate_fit_scores()
                 recommended = selector.get_recommended_models(min_score=min_fit_score)
@@ -318,19 +406,20 @@ if calculate_button:
                 
                 if not models_to_calculate:
                     st.warning(
-                        f"⚠️ {ticker}: {t('no_models_meet_threshold', threshold=min_fit_score)}"
+                        f"⚠️ {ticker}: No models meet minimum fit score ({min_fit_score:.1f}). "
+                        f"Try lowering the threshold or check data quality."
                     )
                     continue
             else:
                 model_name_map = {v: k for k, v in MODEL_DISPLAY_NAMES.items()}
                 models_to_calculate = [model_name_map[m] for m in selected_models if m in model_name_map]
             
-            # Calculate valuations
+            # Calculate valuations with company-specific parameters
             vc = ValuationCalculator(df_iv)
             vc.calculate_all_valuations(
                 models_to_calculate=models_to_calculate,
-                discount_rate=discount_rate,
-                terminal_growth_rate=terminal_growth
+                discount_rate=company_discount_rate,
+                terminal_growth_rate=company_terminal_growth
             )
             
             avg_value = vc.get_average_valuation(weighted=use_weighted_avg)
@@ -347,10 +436,9 @@ if calculate_button:
                 "Years of Data": quality_report.get('num_years', 'N/A')
             }
             
-            if use_smart_selection:
+            if use_smart_selection or use_ai_mode:
                 iv_filtered[t('models_selected')] = len(models_to_calculate)
             
-            # Add valuation results
             for model_key, model_value in iv_values.items():
                 display_name = MODEL_DISPLAY_NAMES.get(model_key, model_key)
                 
@@ -358,7 +446,7 @@ if calculate_button:
                     logger.warning(f"Skipping {model_key} for {ticker}: invalid value")
                     continue
                 
-                if use_smart_selection or display_name in selected_models:
+                if use_smart_selection or use_ai_mode or display_name in selected_models:
                     iv_filtered[display_name] = model_value
                     
                     if show_confidence and model_key in confidence_scores:
@@ -401,7 +489,7 @@ if calculate_button:
                     if data["intrinsic_value"] is None or data["intrinsic_value"] <= 0:
                         continue
                     
-                    if use_smart_selection or display_name in selected_models:
+                    if use_smart_selection or use_ai_mode or display_name in selected_models:
                         margin_results.append({
                             "Ticker": ticker,
                             "Model": display_name,
@@ -441,6 +529,66 @@ if calculate_button:
         
         st.markdown("---")
         
+        # AI Parameter Optimization Results
+        if use_ai_mode and ai_parameters:
+            st.markdown("### 🤖 AI-Optimized Parameters")
+            st.markdown("*Company-specific discount rates and terminal growth rates*")
+            
+            param_data = []
+            for ticker, params in ai_parameters.items():
+                param_data.append({
+                    'Ticker': ticker,
+                    'Discount Rate': f"{params['discount_rate']:.2%}",
+                    'Terminal Growth': f"{params['terminal_growth']:.2%}",
+                    'Projection Years': params['projection_years'],
+                    'Method': params['method'],
+                    'Confidence': params['confidence']
+                })
+            
+            df_params = pd.DataFrame(param_data)
+            
+            st.dataframe(
+                df_params.style.applymap(
+                    lambda x: 'background-color: #d4edda' if x == 'High' else 'background-color: #fff3cd' if x == 'Medium' else '',
+                    subset=['Confidence']
+                ),
+                use_container_width=True,
+                hide_index=True
+            )
+            
+            with st.expander("📋 View Parameter Explanations"):
+                for ticker, params in ai_parameters.items():
+                    st.markdown(f"#### {ticker}")
+                    st.markdown(params['explanation'])
+                    
+                    if 'ai_reasoning' in params and params['ai_reasoning']:
+                        with st.expander(f"🧠 AI Reasoning for {ticker}"):
+                            st.markdown(params['ai_reasoning'])
+                    
+                    if 'adjustments' in params:
+                        adj = params['adjustments']
+                        st.caption(f"Base: {adj['base_rate']:.2%} | Size: +{adj['size_adjustment']:.2%} | Beta: {adj['beta_adjustment']:+.2%} | Leverage: +{adj['leverage_adjustment']:.2%}")
+                    
+                    st.markdown("---")
+            
+            # AI Mode - Explain parameters for beginners
+            if visual_explainer:
+                st.markdown("#### 🎓 Understanding These Parameters (Beginner Guide)")
+                
+                for ticker, params in ai_parameters.items():
+                    explanation = visual_explainer.explain_optimized_parameters(
+                        ticker=ticker,
+                        discount_rate=params['discount_rate'],
+                        terminal_growth=params['terminal_growth'],
+                        explanation=params['explanation']
+                    )
+                    
+                    if explanation:
+                        with st.expander(f"💡 Why these settings for {ticker}?"):
+                            st.info(explanation)
+        
+        st.markdown("---")
+        
         # AI-Powered Insights Section
         if enable_ai_insights and ai_insights:
             st.markdown(f"### {t('ai_analysis')}")
@@ -473,6 +621,34 @@ if calculate_button:
             ),
             use_container_width=True
         )
+        
+        # AI Mode - Explain the table for beginners
+        if use_ai_mode and visual_explainer:
+            st.markdown("#### 🎓 Understanding This Table (Beginner Guide)")
+            
+            for ticker_row in results:
+                ticker = ticker_row['Ticker']
+                current = ticker_row.get(t('current_price'), 0)
+                
+                ticker_valuations = {
+                    k: v for k, v in ticker_row.items()
+                    if k not in ['Ticker', t('current_price'), 'Years of Data', t('models_selected'), 'Average', 'Weighted Average']
+                    and not k.endswith('_Confidence')
+                }
+                
+                avg_val = ticker_row.get('Average') or ticker_row.get('Weighted Average', 0)
+                
+                if ticker_valuations and current and avg_val:
+                    explanation = visual_explainer.explain_intrinsic_value_table(
+                        ticker=ticker,
+                        current_price=current,
+                        valuations=ticker_valuations,
+                        average_value=avg_val
+                    )
+                    
+                    if explanation:
+                        with st.expander(f"💡 What does this mean for {ticker}?", expanded=(len(results)==1)):
+                            st.info(explanation)
         
         # Confidence scores table
         if show_confidence and confidence_cols:
@@ -520,7 +696,6 @@ if calculate_button:
             labels={"Value": "Value ($)", "Model": "Valuation Model"}
         )
         
-        # Add current price line
         if t('current_price') in df_display.columns:
             for ticker in df_display.index:
                 current = df_display.loc[ticker, t('current_price')]
@@ -535,10 +710,36 @@ if calculate_button:
         fig.update_layout(height=500)
         st.plotly_chart(fig, use_container_width=True)
         
+        # AI Mode - Explain the comparison chart
+        if use_ai_mode and visual_explainer and len(results) > 1:
+            st.markdown("#### 🎓 Understanding This Chart (Beginner Guide)")
+            
+            comparison_valuations = {}
+            comparison_prices = {}
+            
+            for ticker_row in results:
+                ticker = ticker_row['Ticker']
+                comparison_prices[ticker] = ticker_row.get(t('current_price'), 0)
+                
+                comparison_valuations[ticker] = {
+                    k: v for k, v in ticker_row.items()
+                    if k not in ['Ticker', t('current_price'), 'Years of Data', t('models_selected'), 'Average', 'Weighted Average']
+                    and not k.endswith('_Confidence')
+                }
+            
+            explanation = visual_explainer.explain_comparison_chart(
+                tickers=list(comparison_prices.keys()),
+                valuations=comparison_valuations,
+                current_prices=comparison_prices
+            )
+            
+            if explanation:
+                st.info(explanation)
+        
         st.markdown("---")
         
         # Model Selection Analysis
-        if use_smart_selection and model_selection_info:
+        if (use_smart_selection or use_ai_mode) and model_selection_info:
             st.markdown(f"### {t('model_analysis')}")
             st.markdown(t('model_analysis_subtitle'))
             
@@ -691,6 +892,22 @@ if calculate_button:
                                         st.markdown(t('positive_factors'))
                                         for detail in exp['pass']:
                                             st.markdown(f"• {detail}")
+            
+            # AI Mode - Explain model selection for beginners
+            if use_ai_mode and visual_explainer:
+                st.markdown("#### 🎓 Why These Models? (Beginner Guide)")
+                
+                for ticker, info in model_selection_info.items():
+                    explanation = visual_explainer.explain_model_selection(
+                        ticker=ticker,
+                        selected_models=[MODEL_DISPLAY_NAMES.get(m, m) for m in info['recommended']],
+                        excluded_models=[MODEL_DISPLAY_NAMES.get(m, m) for m in info['exclusions'].keys()],
+                        reasons=info['exclusions']
+                    )
+                    
+                    if explanation:
+                        with st.expander(f"💡 Why these models for {ticker}?"):
+                            st.info(explanation)
         
         st.markdown("---")
         
@@ -746,6 +963,31 @@ if calculate_button:
             fig2.for_each_xaxis(lambda axis: axis.update(tickangle=45))
             
             st.plotly_chart(fig2, use_container_width=True)
+            
+            # AI Mode - Explain margin of safety for beginners
+            if use_ai_mode and visual_explainer:
+                st.markdown("#### 🎓 Understanding Margin of Safety (Beginner Guide)")
+                
+                for ticker in df_margin['Ticker'].unique():
+                    ticker_margins = df_margin[df_margin['Ticker'] == ticker]
+                    avg_margin = ticker_margins['Margin of Safety (%)'].mean()
+                    has_good_margin = any('✓' in status for status in ticker_margins['Status'])
+                    
+                    explanation = visual_explainer.explain_margin_of_safety(
+                        ticker=ticker,
+                        margin_pct=avg_margin,
+                        target_margin=margin_of_safety_pct * 100,
+                        is_undervalued=has_good_margin
+                    )
+                    
+                    if explanation:
+                        with st.expander(f"💡 What's a good deal for {ticker}?"):
+                            st.info(explanation)
+                            
+                            if has_good_margin:
+                                st.success(f"✅ {ticker} currently offers a {avg_margin:.1f}% safety cushion - meets the {margin_of_safety_pct*100:.0f}% target!")
+                            else:
+                                st.warning(f"⚠️ {ticker}'s {avg_margin:.1f}% safety cushion is below the {margin_of_safety_pct*100:.0f}% target. Consider waiting for a better price.")
         
         # Sensitivity Analysis
         if enable_sensitivity and len(tickers) == 1:
@@ -841,7 +1083,7 @@ PARAMETERS:
 - Discount Rate: {discount_rate*100:.1f}%
 - Terminal Growth: {terminal_growth*100:.1f}%
 - Target Margin of Safety: {margin_of_safety_pct*100:.1f}%
-- Selection Mode: {'Auto-select' if use_smart_selection else 'Manual'}
+- Selection Mode: {'AI Mode' if use_ai_mode else 'Auto-select' if use_smart_selection else 'Manual'}
 
 INTRINSIC VALUES:
 {df_iv_results.to_string()}
@@ -859,7 +1101,6 @@ MARGIN OF SAFETY:
     else:
         st.error(t('no_analysis'))
     
-    # Show failed tickers summary
     if failed_tickers:
         st.markdown("---")
         st.error(f"{t('failed_analyze')}: {', '.join(failed_tickers)}")
@@ -871,7 +1112,7 @@ MARGIN OF SAFETY:
             f"{t('try_later')}"
         )
 
-# ---- Information Section ----
+# Information Section
 st.markdown("---")
 
 with st.expander(t('about_models')):
@@ -882,175 +1123,41 @@ with st.expander(t('about_models')):
     **1. Discounted Cash Flow (DCF)**
     - Projects future free cash flows and discounts them to present value
     - Best for: Companies with stable, positive cash flows
-    - Limitations: Sensitive to growth rate assumptions
     - **Auto-Selected When:** Company has positive FCF in 60%+ of years
     
     **2. Dividend Discount Model (DDM)**
     - Values stock based on present value of future dividends
     - **Single-Stage:** For stable dividend payers (growth <8%)
     - **Multi-Stage:** For growing dividend payers (growth ≥8%)
-    - Best for: Dividend-paying companies with consistent payouts
-    - Limitations: Not applicable to non-dividend stocks
     - **Auto-Selected When:** Company pays dividends consistently
     
     **3. P/E Multiplier Model**
     - Uses average historical P/E ratio × current EPS
     - Best for: Stable, profitable companies
-    - Limitations: Unreliable with volatile earnings
-    - **Auto-Selected When:** Positive earnings in 60%+ of years, reasonable P/E range
+    - **Auto-Selected When:** Positive earnings in 60%+ of years
     
     **4. Asset-Based Valuation**
     - Book value (Total Assets - Total Liabilities) per share
-    - Best for: Asset-heavy companies, value investing, distressed situations
-    - Limitations: Ignores intangible value and future earnings
     - **Auto-Selected When:** Low profitability but strong asset base
     
     **5. Modern Graham Formula**
     - Benjamin Graham's formula adjusted for bond yields
-    - Best for: Conservative valuation estimate
-    - Limitations: May undervalue high-growth companies
     - **Auto-Selected When:** 5+ years of profitability, strong ROE, low debt
-    
-    ### Confidence Scores (Model Quality)
-    - **High**: Model has reliable inputs and low volatility
-    - **Medium**: Model is usable but has some concerns
-    - **Low**: Model results should be interpreted cautiously
-    
-    ### Fit Scores (Model Appropriateness)
-    Smart selection uses fit scores to determine which models are appropriate:
-    - **0.70-1.00**: Highly recommended - All criteria met
-    - **0.50-0.69**: Recommended - Most criteria met
-    - **0.30-0.49**: Marginal - Some concerns exist
-    - **0.00-0.29**: Not suitable - Critical criteria missing
-    
-    The fit score considers:
-    - **Primary Criteria (50%)**: Core requirements (e.g., has dividends for DDM)
-    - **Supporting Criteria (30%)**: Quality indicators (growth, stability)
-    - **Data Quality (20%)**: Years of history, completeness
-    
-    ### Margin of Safety
-    The margin of safety represents the discount from intrinsic value. 
-    A 25% margin means you'd want to buy at 75% of the calculated intrinsic value.
-    """)
-    elif st.session_state.language == 'pt':
-        st.markdown("""
-    ### Modelos de Avaliação Explicados
-    
-    **1. Fluxo de Caixa Descontado (DCF)**
-    - Projeta fluxos de caixa futuros e os desconta para valor presente
-    - Melhor para: Empresas com fluxos de caixa estáveis e positivos
-    - Limitações: Sensível às suposições de taxa de crescimento
-    - **Auto-Selecionado Quando:** Empresa tem FCF positivo em 60%+ dos anos
-    
-    **2. Modelo de Desconto de Dividendos (DDM)**
-    - Avalia ações com base no valor presente de dividendos futuros
-    - **Estágio Único:** Para pagadores de dividendos estáveis (crescimento <8%)
-    - **Multi-Estágio:** Para pagadores de dividendos em crescimento (crescimento ≥8%)
-    - Melhor para: Empresas pagadoras de dividendos com pagamentos consistentes
-    - Limitações: Não aplicável a ações sem dividendos
-    - **Auto-Selecionado Quando:** Empresa paga dividendos consistentemente
-    
-    **3. Modelo Multiplicador P/L**
-    - Usa índice P/L histórico médio × EPS atual
-    - Melhor para: Empresas estáveis e lucrativas
-    - Limitações: Não confiável com lucros voláteis
-    - **Auto-Selecionado Quando:** Lucros positivos em 60%+ dos anos, faixa P/L razoável
-    
-    **4. Avaliação Baseada em Ativos**
-    - Valor patrimonial (Ativos Totais - Passivos Totais) por ação
-    - Melhor para: Empresas com muitos ativos, investimento em valor, situações difíceis
-    - Limitações: Ignora valor intangível e lucros futuros
-    - **Auto-Selecionado Quando:** Baixa lucratividade mas base de ativos forte
-    
-    **5. Fórmula Graham Moderna**
-    - Fórmula de Benjamin Graham ajustada para rendimentos de títulos
-    - Melhor para: Estimativa conservadora de avaliação
-    - Limitações: Pode subvalorizar empresas de alto crescimento
-    - **Auto-Selecionado Quando:** 5+ anos de lucratividade, ROE forte, dívida baixa
-    
-    ### Pontuações de Confiança (Qualidade do Modelo)
-    - **Alta**: Modelo tem entradas confiáveis e baixa volatilidade
-    - **Média**: Modelo é utilizável mas tem algumas preocupações
-    - **Baixa**: Resultados do modelo devem ser interpretados com cautela
-    
-    ### Pontuações de Adequação (Adequação do Modelo)
-    A seleção inteligente usa pontuações de adequação para determinar quais modelos são apropriados:
-    - **0.70-1.00**: Altamente recomendado - Todos os critérios atendidos
-    - **0.50-0.69**: Recomendado - Maioria dos critérios atendidos
-    - **0.30-0.49**: Marginal - Algumas preocupações existem
-    - **0.00-0.29**: Não adequado - Critérios críticos ausentes
-    
-    ### Margem de Segurança
-    A margem de segurança representa o desconto do valor intrínseco. 
-    Uma margem de 25% significa que você gostaria de comprar a 75% do valor intrínseco calculado.
-    """)
-    elif st.session_state.language == 'es':
-        st.markdown("""
-    ### Modelos de Valoración Explicados
-    
-    **1. Flujo de Caja Descontado (DCF)**
-    - Proyecta flujos de caja futuros y los descuenta a valor presente
-    - Mejor para: Empresas con flujos de caja estables y positivos
-    - Limitaciones: Sensible a los supuestos de tasa de crecimiento
-    - **Auto-Seleccionado Cuando:** Empresa tiene FCF positivo en 60%+ de los años
-    
-    **2. Modelo de Descuento de Dividendos (DDM)**
-    - Valora acciones basándose en el valor presente de dividendos futuros
-    - **Etapa Única:** Para pagadores de dividendos estables (crecimiento <8%)
-    - **Multi-Etapa:** Para pagadores de dividendos en crecimiento (crecimiento ≥8%)
-    - Mejor para: Empresas pagadoras de dividendos con pagos consistentes
-    - Limitaciones: No aplicable a acciones sin dividendos
-    - **Auto-Seleccionado Cuando:** Empresa paga dividendos consistentemente
-    
-    **3. Modelo Multiplicador P/E**
-    - Usa ratio P/E histórico promedio × EPS actual
-    - Mejor para: Empresas estables y rentables
-    - Limitaciones: No confiable con ganancias volátiles
-    - **Auto-Seleccionado Cuando:** Ganancias positivas en 60%+ de los años, rango P/E razonable
-    
-    **4. Valoración Basada en Activos**
-    - Valor en libros (Activos Totales - Pasivos Totales) por acción
-    - Mejor para: Empresas con muchos activos, inversión en valor, situaciones difíciles
-    - Limitaciones: Ignora valor intangible y ganancias futuras
-    - **Auto-Seleccionado Cuando:** Baja rentabilidad pero base de activos fuerte
-    
-    **5. Fórmula Graham Moderna**
-    - Fórmula de Benjamin Graham ajustada para rendimientos de bonos
-    - Mejor para: Estimación conservadora de valoración
-    - Limitaciones: Puede subvalorar empresas de alto crecimiento
-    - **Auto-Seleccionado Cuando:** 5+ años de rentabilidad, ROE fuerte, deuda baja
-    
-    ### Puntuaciones de Confianza (Calidad del Modelo)
-    - **Alta**: Modelo tiene entradas confiables y baja volatilidad
-    - **Media**: Modelo es utilizable pero tiene algunas preocupaciones
-    - **Baja**: Los resultados del modelo deben interpretarse con precaución
-    
-    ### Puntuaciones de Ajuste (Adecuación del Modelo)
-    La selección inteligente usa puntuaciones de ajuste para determinar qué modelos son apropiados:
-    - **0.70-1.00**: Altamente recomendado - Todos los criterios cumplidos
-    - **0.50-0.69**: Recomendado - Mayoría de criterios cumplidos
-    - **0.30-0.49**: Marginal - Existen algunas preocupaciones
-    - **0.00-0.29**: No adecuado - Faltan criterios críticos
-    
-    ### Margen de Seguridad
-    El margen de seguridad representa el descuento del valor intrínseco. 
-    Un margen del 25% significa que le gustaría comprar al 75% del valor intrínseco calculado.
     """)
 
 with st.expander(t('faq')):
     st.markdown("""
-    **Q: What's the difference between Confidence Scores and Fit Scores?**  
+    **Q: What's the difference between the three modes?**  
     A: 
-    - **Fit Score**: Measures if the model is *appropriate* for this company
-    - **Confidence Score**: Measures how *reliable* the model's output is
+    - **Manual**: You choose models and set parameters
+    - **Auto-select**: AI chooses models, you set parameters
+    - **AI Mode**: AI chooses models AND optimizes parameters per company
     
     **Q: Why do different models give different values?**  
-    A: Each model uses different assumptions and inputs. Look at the range and average.
+    A: Each model uses different assumptions. Look at the range and average.
     
-    **Q: Should I use Auto-select or Manual selection?**  
-    A: 
-    - **Auto-select**: Let the system choose based on financial analysis (recommended)
-    - **Manual**: Override if you want specific models
+    **Q: What is margin of safety?**  
+    A: It's like a "safety cushion" - how much cheaper the stock is than its estimated value.
     """)
 
 with st.expander(t('technical')):
@@ -1060,11 +1167,12 @@ with st.expander(t('technical')):
     - **Terminal Growth Rate**: {DEFAULT_TERMINAL_GROWTH*100:.1f}%
     - **Margin of Safety**: {DEFAULT_MARGIN_OF_SAFETY*100:.0f}%
     - **Data Source**: Yahoo Finance via yfinance library
-    - **Cache Duration**: 1 hour
     
-    ### Data Requirements
-    - Minimum {MIN_HISTORICAL_YEARS} years of financial data recommended
-    - Required metrics: Free Cash Flow, EPS, Share Price, Balance Sheet items
+    ### AI Mode Features
+    - Company-specific discount rates (6-20%)
+    - Industry-adjusted parameters
+    - Risk-based optimization
+    - Beginner-friendly explanations
     """)
 
 # Footer
