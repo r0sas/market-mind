@@ -14,6 +14,7 @@ from core.model_selector import ModelSelector
 from core.ai_insights import AIInsightsGenerator
 from core.ai_parameter_optimizer import AIParameterOptimizer
 from core.ai_visual_explainer import AIVisualExplainer
+from core.valuation_validator import validate_and_correct_valuations  # NEW
 from core.Config import (
     MODEL_DISPLAY_NAMES,
     DEFAULT_DISCOUNT_RATE,
