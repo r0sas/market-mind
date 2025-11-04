@@ -7,6 +7,7 @@ Intelligently determines optimal DCF parameters based on company characteristics
 import logging
 from typing import Dict, Optional, Tuple
 from groq import Groq
+from core.ai_provider import UnifiedAIClient, AIProvider
 import json
 
 # Configure logging
@@ -55,28 +56,29 @@ class AIParameterOptimizer:
         'default': 0.025
     }
     
-    def __init__(self, api_key: Optional[str] = None, use_ai: bool = True):
-        """
-        Initialize optimizer.
-        
-        Args:
-            api_key: Groq API key for AI mode
-            use_ai: If True, use AI reasoning; if False, use rule-based only
-        """
+    def __init__(self, api_key: Optional[str] = None, use_ollama: bool = False, use_ai: bool = True):
+        """Initialize optimizer with Groq or Ollama support."""
         self.api_key = api_key
-        self.use_ai = use_ai and api_key is not None
+        self.use_ollama = use_ollama
+        self.use_ai = use_ai and (api_key or use_ollama)
         
         if self.use_ai:
-            try:
-                self.client = Groq(api_key=api_key)
-                logger.info("AI Parameter Optimizer initialized with Groq API")
-            except Exception as e:
-                logger.error(f"Failed to initialize Groq: {e}")
+            # Determine provider
+            provider = AIProvider.OLLAMA if use_ollama else AIProvider.GROQ if api_key else AIProvider.NONE
+            self.ai_client = UnifiedAIClient(provider, api_key)
+            
+            if self.ai_client.is_available:
+                logger.info(f"AI Parameter Optimizer initialized: {self.ai_client.get_provider_name()}")
+            else:
+                logger.warning("AI unavailable, using rule-based mode")
                 self.use_ai = False
-                self.client = None
+            
+            # Backward compatibility
+            self.client = self.ai_client if self.ai_client.is_available else None
         else:
+            self.ai_client = UnifiedAIClient(AIProvider.NONE)
             self.client = None
-            logger.info("AI Parameter Optimizer initialized in rule-based mode")
+            logger.info("AI Parameter Optimizer in rule-based mode")
     
     def optimize_parameters(
         self,
@@ -213,27 +215,27 @@ class AIParameterOptimizer:
             prompt = self._build_ai_prompt(ticker, company_data, financial_metrics, rule_based)
             
             # Call Groq API
-            response = self.client.chat.completions.create(
-                model="llama-3.1-70b-versatile",  # Use larger model for better reasoning
+            ai_response = self.ai_client.chat(
                 messages=[
                     {
                         "role": "system",
                         "content": """You are an expert financial analyst specializing in DCF valuation. 
-Your task is to determine optimal discount rates and terminal growth rates for companies based on their characteristics.
-Consider industry dynamics, company-specific risks, growth trajectory, and financial health.
-Respond ONLY with valid JSON, no additional text."""
+            Your task is to determine optimal discount rates and terminal growth rates for companies based on their characteristics.
+            Consider industry dynamics, company-specific risks, growth trajectory, and financial health.
+            Respond ONLY with valid JSON, no additional text."""
                     },
                     {
                         "role": "user",
                         "content": prompt
                     }
                 ],
-                temperature=0.3,  # Lower temperature for more consistent results
+                temperature=0.3,
                 max_tokens=800
             )
-            
-            # Parse AI response
-            ai_response = response.choices[0].message.content.strip()
+
+            if not ai_response:
+                logger.error("AI returned no response")
+                return self._optimize_rule_based(ticker, company_data, financial_metrics)
             
             # Extract JSON from response (handle markdown code blocks)
             if '```json' in ai_response:

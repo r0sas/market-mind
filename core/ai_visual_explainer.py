@@ -7,6 +7,7 @@ Generates simple, educational insights for tables and charts
 import logging
 from typing import Dict, List, Optional
 from groq import Groq
+from core.ai_provider import UnifiedAIClient, AIProvider
 import pandas as pd
 
 # Configure logging
@@ -26,28 +27,25 @@ class AIVisualExplainer:
     - Parameter optimization results
     """
     
-    def __init__(self, api_key: Optional[str] = None):
-        """
-        Initialize explainer.
-        
-        Args:
-            api_key: Groq API key for AI explanations
-        """
+    def __init__(self, api_key: Optional[str] = None, use_ollama: bool = False):
+        """Initialize explainer with Groq or Ollama support."""
         self.api_key = api_key
+        self.use_ollama = use_ollama
         
-        if api_key:
-            try:
-                self.client = Groq(api_key=api_key)
-                logger.info("AI Visual Explainer initialized")
-            except Exception as e:
-                logger.error(f"Failed to initialize Groq: {e}")
-                self.client = None
-        else:
-            self.client = None
-    
+        # Determine provider
+        provider = AIProvider.OLLAMA if use_ollama else AIProvider.GROQ if api_key else AIProvider.NONE
+        self.ai_client = UnifiedAIClient(provider, api_key, model="llama3.1" if use_ollama else "llama-3.1-8b-instant")
+        
+        # Backward compatibility
+        self.client = self.ai_client if self.ai_client.is_available else None
+        
+        if self.ai_client.is_available:
+            logger.info(f"AI Visual Explainer initialized: {self.ai_client.get_provider_name()}")
+
+        
     def is_available(self) -> bool:
         """Check if AI explanations are available."""
-        return self.client is not None
+        return self.ai_client.is_available
     
     def explain_intrinsic_value_table(
         self,
@@ -76,24 +74,24 @@ class AIVisualExplainer:
         try:
             prompt = f"""You are explaining stock valuation to a complete beginner who has never invested before.
 
-STOCK: {ticker}
-Current Market Price: ${current_price:,.2f}
+    STOCK: {ticker}
+    Current Market Price: ${current_price:,.2f}
 
-Calculated Intrinsic Values (what the stock is "really worth"):
-{self._format_valuations(valuations)}
+    Calculated Intrinsic Values (what the stock is "really worth"):
+    {self._format_valuations(valuations)}
 
-Average Intrinsic Value: ${average_value:,.2f}
+    Average Intrinsic Value: ${average_value:,.2f}
 
-Write a simple 3-4 sentence explanation that:
-1. Explains what "intrinsic value" means in simple terms
-2. Compares the current price to calculated values (is it expensive or cheap?)
-3. Points out if there's agreement or disagreement between models
-4. Gives a simple takeaway for a beginner
+    Write a simple 3-4 sentence explanation that:
+    1. Explains what "intrinsic value" means in simple terms
+    2. Compares the current price to calculated values (is it expensive or cheap?)
+    3. Points out if there's agreement or disagreement between models
+    4. Gives a simple takeaway for a beginner
 
-Use everyday language. Avoid jargon. Be encouraging and educational."""
+    Use everyday language. Avoid jargon. Be encouraging and educational."""
 
-            response = self.client.chat.completions.create(
-                model="llama-3.1-8b-instant",
+            # UPDATED: Use unified AI client
+            explanation = self.ai_client.chat(
                 messages=[
                     {
                         "role": "system",
@@ -108,7 +106,12 @@ Use everyday language. Avoid jargon. Be encouraging and educational."""
                 max_tokens=300
             )
             
-            explanation = response.choices[0].message.content.strip()
+            # Fallback if AI fails
+            if not explanation:
+                return self._generate_simple_table_explanation(
+                    ticker, current_price, valuations, average_value
+                )
+            
             return explanation
             
         except Exception as e:
@@ -116,7 +119,7 @@ Use everyday language. Avoid jargon. Be encouraging and educational."""
             return self._generate_simple_table_explanation(
                 ticker, current_price, valuations, average_value
             )
-    
+
     def explain_comparison_chart(
         self,
         tickers: List[str],
@@ -151,21 +154,21 @@ Use everyday language. Avoid jargon. Be encouraging and educational."""
             
             prompt = f"""You are explaining a stock comparison chart to someone new to investing.
 
-COMPARING {len(tickers)} STOCKS:
-{chr(10).join(analysis)}
+    COMPARING {len(tickers)} STOCKS:
+    {chr(10).join(analysis)}
 
-This chart shows multiple valuation models for each stock (the colored bars) and compares them to the current market price (the red line).
+    This chart shows multiple valuation models for each stock (the colored bars) and compares them to the current market price (the red line).
 
-Write a 3-4 sentence explanation that:
-1. Explains what the chart is showing in simple terms
-2. Points out which stock(s) look like the best deals (most undervalued)
-3. Mentions if any stocks look expensive (overvalued)
-4. Reminds them this is just one factor in investing
+    Write a 3-4 sentence explanation that:
+    1. Explains what the chart is showing in simple terms
+    2. Points out which stock(s) look like the best deals (most undervalued)
+    3. Mentions if any stocks look expensive (overvalued)
+    4. Reminds them this is just one factor in investing
 
-Keep it simple and encouraging. Avoid technical jargon."""
+    Keep it simple and encouraging. Avoid technical jargon."""
 
-            response = self.client.chat.completions.create(
-                model="llama-3.1-8b-instant",
+            # UPDATED: Use unified AI client
+            explanation = self.ai_client.chat(
                 messages=[
                     {
                         "role": "system",
@@ -180,14 +183,23 @@ Keep it simple and encouraging. Avoid technical jargon."""
                 max_tokens=300
             )
             
-            return response.choices[0].message.content.strip()
+            # Fallback if AI fails
+            if not explanation:
+                return self._generate_simple_comparison_explanation(
+                    tickers, valuations, current_prices
+                )
+            
+            return explanation
             
         except Exception as e:
             logger.error(f"Failed to generate comparison explanation: {e}")
             return self._generate_simple_comparison_explanation(
                 tickers, valuations, current_prices
             )
-    
+
+
+
+    # METHOD 3: explain_margin_of_safety (around line 155)
     def explain_margin_of_safety(
         self,
         ticker: str,
@@ -215,22 +227,22 @@ Keep it simple and encouraging. Avoid technical jargon."""
         try:
             prompt = f"""Explain "margin of safety" to someone who has never invested before.
 
-STOCK: {ticker}
-Current Margin of Safety: {margin_pct:.1f}%
-Target Margin: {target_margin:.1f}%
-Status: {"✓ Good deal" if is_undervalued else "✗ Not a good deal right now"}
+    STOCK: {ticker}
+    Current Margin of Safety: {margin_pct:.1f}%
+    Target Margin: {target_margin:.1f}%
+    Status: {"✓ Good deal" if is_undervalued else "✗ Not a good deal right now"}
 
-The margin of safety is like a "safety cushion" - how much cheaper the stock is than what we think it's worth.
+    The margin of safety is like a "safety cushion" - how much cheaper the stock is than what we think it's worth.
 
-Write a 2-3 sentence explanation that:
-1. Uses a simple analogy (like buying a $100 item on sale)
-2. Explains if this is a good or bad margin for {ticker}
-3. Tells them what they should look for
+    Write a 2-3 sentence explanation that:
+    1. Uses a simple analogy (like buying a $100 item on sale)
+    2. Explains if this is a good or bad margin for {ticker}
+    3. Tells them what they should look for
 
-Use very simple language."""
+    Use very simple language."""
 
-            response = self.client.chat.completions.create(
-                model="llama-3.1-8b-instant",
+            # UPDATED: Use unified AI client
+            explanation = self.ai_client.chat(
                 messages=[
                     {
                         "role": "system",
@@ -245,14 +257,22 @@ Use very simple language."""
                 max_tokens=250
             )
             
-            return response.choices[0].message.content.strip()
+            # Fallback if AI fails
+            if not explanation:
+                return self._generate_simple_margin_explanation(
+                    ticker, margin_pct, target_margin, is_undervalued
+                )
+            
+            return explanation
             
         except Exception as e:
             logger.error(f"Failed to generate margin explanation: {e}")
             return self._generate_simple_margin_explanation(
                 ticker, margin_pct, target_margin, is_undervalued
             )
-    
+
+
+    # METHOD 4: explain_model_selection (around line 200)
     def explain_model_selection(
         self,
         ticker: str,
@@ -280,21 +300,21 @@ Use very simple language."""
         try:
             prompt = f"""Explain to a beginner why we use different valuation models for different companies.
 
-COMPANY: {ticker}
-Using these models: {', '.join(selected_models)} ({len(selected_models)} total)
-Not using: {', '.join(excluded_models)} ({len(excluded_models)} total)
+    COMPANY: {ticker}
+    Using these models: {', '.join(selected_models)} ({len(selected_models)} total)
+    Not using: {', '.join(excluded_models)} ({len(excluded_models)} total)
 
-Main reason models were excluded: {list(reasons.values())[0] if reasons else 'Data availability'}
+    Main reason models were excluded: {list(reasons.values())[0] if reasons else 'Data availability'}
 
-Write a 2-3 sentence explanation that:
-1. Explains why not all models work for all companies (use simple analogy)
-2. Mentions what makes {ticker} suitable for the selected models
-3. Reassures them this is normal and actually better for accuracy
+    Write a 2-3 sentence explanation that:
+    1. Explains why not all models work for all companies (use simple analogy)
+    2. Mentions what makes {ticker} suitable for the selected models
+    3. Reassures them this is normal and actually better for accuracy
 
-Keep it simple and positive."""
+    Keep it simple and positive."""
 
-            response = self.client.chat.completions.create(
-                model="llama-3.1-8b-instant",
+            # UPDATED: Use unified AI client
+            explanation = self.ai_client.chat(
                 messages=[
                     {
                         "role": "system",
@@ -309,14 +329,22 @@ Keep it simple and positive."""
                 max_tokens=250
             )
             
-            return response.choices[0].message.content.strip()
+            # Fallback if AI fails
+            if not explanation:
+                return self._generate_simple_selection_explanation(
+                    ticker, selected_models, excluded_models
+                )
+            
+            return explanation
             
         except Exception as e:
             logger.error(f"Failed to generate selection explanation: {e}")
             return self._generate_simple_selection_explanation(
                 ticker, selected_models, excluded_models
             )
-    
+
+
+    # METHOD 5: explain_optimized_parameters (around line 245)
     def explain_optimized_parameters(
         self,
         ticker: str,
@@ -344,21 +372,21 @@ Keep it simple and positive."""
         try:
             prompt = f"""Explain what "discount rate" and "terminal growth" mean to someone new to investing.
 
-COMPANY: {ticker}
-Discount Rate: {discount_rate:.1%}
-Terminal Growth: {terminal_growth:.1%}
+    COMPANY: {ticker}
+    Discount Rate: {discount_rate:.1%}
+    Terminal Growth: {terminal_growth:.1%}
 
-Technical explanation: {explanation}
+    Technical explanation: {explanation}
 
-Write a 2-3 sentence explanation that:
-1. Explains these are like "risk settings" - higher risk = higher discount rate
-2. Mentions if {ticker} is considered low-risk, medium-risk, or high-risk based on the {discount_rate:.1%} rate
-3. Uses a simple analogy
+    Write a 2-3 sentence explanation that:
+    1. Explains these are like "risk settings" - higher risk = higher discount rate
+    2. Mentions if {ticker} is considered low-risk, medium-risk, or high-risk based on the {discount_rate:.1%} rate
+    3. Uses a simple analogy
 
-Avoid technical jargon. Be encouraging."""
+    Avoid technical jargon. Be encouraging."""
 
-            response = self.client.chat.completions.create(
-                model="llama-3.1-8b-instant",
+            # UPDATED: Use unified AI client
+            explanation = self.ai_client.chat(
                 messages=[
                     {
                         "role": "system",
@@ -373,16 +401,22 @@ Avoid technical jargon. Be encouraging."""
                 max_tokens=250
             )
             
-            return response.choices[0].message.content.strip()
+            # Fallback if AI fails
+            if not explanation:
+                return self._generate_simple_parameter_explanation(
+                    ticker, discount_rate, terminal_growth
+                )
+            
+            return explanation
             
         except Exception as e:
             logger.error(f"Failed to generate parameter explanation: {e}")
             return self._generate_simple_parameter_explanation(
                 ticker, discount_rate, terminal_growth
             )
-    
+
     # Fallback methods (when AI is unavailable)
-    
+
     def _generate_simple_table_explanation(
         self, ticker: str, current_price: float, valuations: Dict, average: float
     ) -> str:
@@ -406,7 +440,7 @@ Avoid technical jargon. Be encouraging."""
             agreement = "The models mostly agree on the value, which increases confidence."
         
         return f"""**What This Means:** {ticker} {verdict}. We used {len(valuations)} different valuation methods to estimate what the stock is "really worth" (its intrinsic value). {agreement} Remember, this is just one factor to consider when investing!"""
-    
+
     def _generate_simple_comparison_explanation(
         self, tickers: List[str], valuations: Dict, current_prices: Dict
     ) -> str:
@@ -433,7 +467,7 @@ Avoid technical jargon. Be encouraging."""
         text += "Remember: intrinsic value is just one piece of the puzzle!"
         
         return text
-    
+
     def _generate_simple_margin_explanation(
         self, ticker: str, margin_pct: float, target: float, is_good: bool
     ) -> str:
@@ -447,14 +481,14 @@ Avoid technical jargon. Be encouraging."""
             verdict = f"{ticker}'s margin of safety is {margin_pct:.0f}%, below the {target*100:.0f}% target. You might want to wait for a better price."
         
         return f"""**Margin of Safety Explained:** {analogy} {verdict}"""
-    
+
     def _generate_simple_selection_explanation(
         self, ticker: str, selected: List[str], excluded: List[str]
     ) -> str:
         """Generate simple model selection explanation without AI."""
         
         return f"""**Why Different Models?** Just like you wouldn't use a hammer for every job, we use different valuation methods for different companies. For {ticker}, {len(selected)} models are appropriate based on its financial characteristics, while {len(excluded)} don't fit well. Using the right tools gives more accurate results!"""
-    
+
     def _generate_simple_parameter_explanation(
         self, ticker: str, discount_rate: float, terminal_growth: float
     ) -> str:
@@ -468,7 +502,7 @@ Avoid technical jargon. Be encouraging."""
             risk = "higher-risk (like a fast-growing tech company)"
         
         return f"""**Risk Settings:** The discount rate ({discount_rate:.1%}) is like a "risk dial" - {ticker} is considered {risk}. Lower risk companies need lower returns to be attractive investments. These customized settings help us get more accurate valuations for each unique company."""
-    
+
     def _format_valuations(self, valuations: Dict[str, float]) -> str:
         """Format valuations for prompt."""
         return "\n".join([f"- {model}: ${value:,.2f}" for model, value in valuations.items()])

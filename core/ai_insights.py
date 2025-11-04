@@ -10,6 +10,7 @@ import os
 import logging
 from typing import Dict, Optional, List
 from groq import Groq
+from core.ai_provider import UnifiedAIClient, AIProvider
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -32,35 +33,39 @@ class AIInsightsGenerator:
     def __init__(
         self, 
         api_key: Optional[str] = None, 
-        model: str = "llama-3.1-8b-instant",
-        enable_ollama_fallback: bool = True
+        use_ollama: bool = False,  # NEW PARAMETER
+        model: str = None
     ):
-        """
-        Initialize AI insights generator.
-        
-        Args:
-            api_key: Groq API key. If None, looks for GROQ_API_KEY env variable
-            model: Groq model to use (default: llama-3.1-8b-instant)
-            enable_ollama_fallback: If True, use local Ollama when Groq fails
-        """
+        """Initialize AI insights generator with Groq or Ollama support."""
         self.api_key = api_key or os.getenv("GROQ_API_KEY")
-        self.model = model
-        self.enable_ollama_fallback = enable_ollama_fallback
+        self.use_ollama = use_ollama
         
-        if not self.api_key:
-            logger.warning("No Groq API key found. Will try Ollama if available.")
-            self.client = None
+        # Determine provider
+        if use_ollama:
+            provider = AIProvider.OLLAMA
+            default_model = "llama3.1"
+        elif self.api_key:
+            provider = AIProvider.GROQ
+            default_model = "llama-3.1-8b-instant"
         else:
-            try:
-                self.client = Groq(api_key=self.api_key)
-                logger.info(f"Groq AI initialized with model: {model}")
-            except Exception as e:
-                logger.error(f"Failed to initialize Groq client: {e}")
-                self.client = None
+            provider = AIProvider.NONE
+            default_model = None
+        
+        # Use unified client
+        self.model = model or default_model
+        self.ai_client = UnifiedAIClient(provider, self.api_key, self.model)
+        
+        # Backward compatibility
+        self.client = self.ai_client if self.ai_client.is_available else None
+        
+        if self.ai_client.is_available:
+            logger.info(f"AI initialized: {self.ai_client.get_provider_name()} with {self.model}")
+        else:
+            logger.warning("No AI provider available")
     
     def is_available(self) -> bool:
         """Check if AI insights are available."""
-        return self.client is not None
+        return self.ai_client.is_available
     
     def generate_insights(
         self,
@@ -96,8 +101,7 @@ class AIInsightsGenerator:
             )
             
             # Call Groq API
-            response = self.client.chat.completions.create(
-                model=self.model,
+            insights = self.ai_client.chat(
                 messages=[
                     {
                         "role": "system",
@@ -108,13 +112,12 @@ class AIInsightsGenerator:
                         "content": prompt
                     }
                 ],
-                max_tokens=400,
                 temperature=0.7,
-                top_p=0.9
+                max_tokens=400
             )
-            
-            insights = response.choices[0].message.content.strip()
-            logger.info(f"Generated AI insights for {ticker} ({len(insights)} chars)")
+
+            if not insights:
+                return None
             
             return insights
             
@@ -222,27 +225,8 @@ Be specific, concise, and actionable. Focus on the numbers provided."""
         return results
     
     def test_connection(self) -> bool:
-        """
-        Test if Groq API is working.
-        
-        Returns:
-            True if connection successful, False otherwise
-        """
-        if not self.is_available():
-            return False
-        
-        try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[{"role": "user", "content": "Say 'OK' if you can read this."}],
-                max_tokens=10
-            )
-            result = response.choices[0].message.content.strip()
-            logger.info(f"Groq API test successful: {result}")
-            return True
-        except Exception as e:
-            logger.error(f"Groq API test failed: {e}")
-            return False
+        """Test if AI provider is working."""
+        return self.ai_client.test_connection()
 
 
 # Convenience function for simple usage
