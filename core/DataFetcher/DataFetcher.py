@@ -226,7 +226,7 @@ class DataFetcher:
             'dividend_yield': info.get('dividendYield')
         }
         return summary
-    
+    # TO BE MOVED TO METRICS CALCULATOR MODULE LATER
     def calculate_pe_ratio(
         self, 
         price: Optional[float], 
@@ -338,69 +338,7 @@ class DataFetcher:
         
         return enhanced_is
     
-    def _get_share_prices_for_dates(
-        self, 
-        fiscal_dates: pd.Index, 
-        share_price_data: pd.DataFrame
-    ) -> List[Optional[float]]:
-        """
-        Get share prices for each fiscal date.
-        
-        Args:
-            fiscal_dates: Index of fiscal period end dates
-            share_price_data: DataFrame with historical prices
-            
-        Returns:
-            List of share prices matching fiscal dates
-        """
-        share_prices = []
-        for date_str in fiscal_dates:
-            fiscal_date = pd.to_datetime(date_str).date()
-            mask = share_price_data['Date'].dt.date <= fiscal_date
-            if mask.any():
-                last_row = share_price_data[mask].iloc[-1]
-                share_prices.append(last_row['Close'])
-            else:
-                logger.warning(f"No share price data available for date {fiscal_date}")
-                share_prices.append(None)
-        return share_prices
-    
-    def _get_annual_dividends_for_dates(
-        self, 
-        fiscal_dates: pd.Index, 
-        dividends: pd.Series
-    ) -> List[float]:
-        """
-        Calculate total annual dividends for each fiscal year.
-        
-        Args:
-            fiscal_dates: Index of fiscal period end dates
-            dividends: Series with dividend data
-            
-        Returns:
-            List of annual dividend totals
-        """
-        dividend_values = []
-        
-        if dividends is None or dividends.empty:
-            return [0.0] * len(fiscal_dates)
-        
-        try:
-            dividends_df = dividends.reset_index()
-            dividends_df['Date'] = pd.to_datetime(dividends_df['Date']).dt.tz_localize(None)
-        except Exception as e:
-            logger.warning(f"Error processing dividend dates: {str(e)}")
-            return [0.0] * len(fiscal_dates)
-        
-        for date_str in fiscal_dates:
-            fiscal_date = pd.to_datetime(date_str).tz_localize(None)
-            # Sum dividends in the year prior to fiscal date
-            year_start = fiscal_date - pd.DateOffset(years=1)
-            mask = (dividends_df['Date'] > year_start) & (dividends_df['Date'] <= fiscal_date)
-            annual_div = dividends_df[mask]['Dividends'].sum() if mask.any() else 0.0
-            dividend_values.append(annual_div)
-        
-        return dividend_values
+
     
     def _calculate_pe_ratios(self, enhanced_is: pd.DataFrame) -> List[Optional[float]]:
         """
@@ -450,31 +388,7 @@ class DataFetcher:
         combined_df = enhanced_income_stmt.copy()
         
         # Add key balance sheet items
-        for item in BALANCE_SHEET_ITEMS:
-            if item in balance_sheet.index:
-                combined_df.loc[item] = balance_sheet.loc[item]
-            else:
-                logger.debug(f"Balance sheet item '{item}' not found")
-        
-        # Add key cash flow items
-        for item in CASH_FLOW_ITEMS:
-            if item in cash_flow.index:
-                combined_df.loc[item] = cash_flow.loc[item]
-            else:
-                logger.debug(f"Cash flow item '{item}' not found")
-        
-        # Add summary metrics as new rows (only if values exist)
-        num_cols = len(combined_df.columns)
-        if summary['market_cap']:
-            combined_df.loc['Market Cap'] = [summary['market_cap']] * num_cols
-        if summary['current_price']:
-            combined_df.loc['Current Price'] = [summary['current_price']] * num_cols
-        if summary['sector']:
-            combined_df.loc['Sector'] = [summary['sector']] * num_cols
-        if summary['industry']:
-            combined_df.loc['Industry'] = [summary['industry']] * num_cols
-        
-        return combined_df
+
     
     def display_data_overview(self, combined_df: pd.DataFrame) -> None:
         """

@@ -4,8 +4,8 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-from core.DataFetcher import DataFetcher
-from core.IVSimplifier import IVSimplifier
+from core.DataFetcher.DataFetcher import DataFetcher
+from core.IV_Simplifier.IV_Simplifier import IVSimplifier
 from core.ValuationCalculator import ValuationCalculator
 from core.model_selector import ModelSelector
 

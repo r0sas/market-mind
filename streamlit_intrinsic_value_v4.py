@@ -8,8 +8,8 @@ from typing import Dict, List
 import time
 import logging
 
-from core.DataFetcher import DataFetcher, DataFetcherError
-from core.IVSimplifier import IVSimplifier, SimplifierError
+from core.DataFetcher.DataFetcher import DataFetcher, DataFetcherError
+from core.IV_Simplifier.IV_Simplifier import IVSimplifier, SimplifierError
 from core.ValuationCalculator import ValuationCalculator, ValuationError
 from core.model_selector import ModelSelector
 from core.ai_insights import AIInsightsGenerator
