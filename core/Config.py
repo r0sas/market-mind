@@ -158,3 +158,16 @@ CONFIDENCE_THRESHOLDS = {
     'pe_volatility_high': 0.5,     # CV above 50% = low confidence
     'pe_volatility_medium': 0.3,   # 30–50% = medium confidence
 }
+
+# Projection years (used in some DCF / dividend models)
+DEFAULT_PROJECTION_YEARS = 5
+
+# Default bond yield (used as a reference discount rate)
+DEFAULT_BOND_YIELD = 0.0521  # 5.21%
+
+# Reasonable growth and P/E sanity checks
+MAX_REASONABLE_GROWTH_RATE = 0.50  # 50% CAGR is suspiciously high
+MAX_REASONABLE_PE = 200            # P/E ratios above this are likely outliers
+
+# Minimum number of years of data needed for valuation
+MIN_YEARS_FOR_VALUATION = 2

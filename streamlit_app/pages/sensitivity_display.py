@@ -3,7 +3,7 @@ from typing import List, Dict
 from translations.translator import get_text
 from data_handlers.stock_fetcher import fetch_stock_data
 from core.simplifier.iv_simplifier import IVSimplifier
-from core.oldscripts.ValuationCalculator import ValuationCalculator
+from core.valuation.valuation_manager import ValuationManager
 from visualizations.charts import create_sensitivity_plot
 
 def display_sensitivity_analysis(tickers: List[str], config: Dict):
@@ -24,7 +24,7 @@ def display_sensitivity_analysis(tickers: List[str], config: Dict):
         # Fetch and prepare data
         df_data = fetch_stock_data(ticker)
         df_iv = IVSimplifier(df_data).simplify()
-        vc = ValuationCalculator(df_iv)
+        vc = ValuationManager(df_iv)
         
         # Parameter and model mapping
         param_map = {

@@ -1,9 +1,10 @@
 from typing import Dict, Optional
 import pandas as pd
 import logging
-from core.oldscripts.ValuationCalculator import ValuationCalculator, ValuationError
-from core.oldscripts.model_selector import ModelSelector
-from core.oldscripts.DataFetcher import DataFetcher
+from core.valuation.base_valuation import ValuationError
+from core.valuation.valuation_manager import ValuationManager
+from core.model_selector.model_selector import ModelSelector
+from core.datafetcher.data_fetcher import DataFetcher
 from core.config import MODEL_DISPLAY_NAMES
 
 logger = logging.getLogger(__name__)
@@ -72,24 +73,30 @@ def process_valuations(
     
     # Model Selection Logic
     if config.get('use_smart_selection') or config.get('use_ai_mode'):
+        # Initialize and analyze model fits
         selector = ModelSelector(df_iv)
-        fit_scores = selector.calculate_fit_scores()
-        models = selector.get_recommended_models(config['min_fit_score'])
+        selector.analyze()
+        
+        fit_scores = selector.fit_scores
+        explanations = selector.explanations
+        recommended_models = selector.recommend(top_n=3)
         
         model_info = {
             'fit_scores': fit_scores,
-            'recommended': models,
-            'explanations': selector.get_fit_explanations(),
-            'exclusions': selector.get_exclusion_reasons(),
+            'recommended': recommended_models,
+            'explanations': explanations,
             'selector': selector
         }
         
+        # Fallback: ensure models are extracted from recommendations
+        models = [m for m in recommended_models.keys()] if isinstance(recommended_models, dict) else recommended_models
+        
         if not models:
-            logger.warning(f"No models meet minimum fit score for {ticker}")
+            logger.warning(f"No suitable models found for {ticker}")
             raise ValuationError(
-                f"No models meet minimum fit score ({config['min_fit_score']:.1f}). "
-                "Try lowering the threshold or check data quality."
+                f"No models met the fit criteria. Try checking data quality or parameters."
             )
+
     else:
         # Manual selection
         name_map = {v: k for k, v in MODEL_DISPLAY_NAMES.items()}
@@ -97,12 +104,13 @@ def process_valuations(
         model_info = None
     
     # Calculate valuations
-    vc = ValuationCalculator(df_iv)
-    vc.calculate_all_valuations(
+    vc = ValuationManager(df_iv)
+    vc.calculate_models(
         models_to_calculate=models,
         discount_rate=company_discount_rate,
         terminal_growth_rate=company_terminal_growth
     )
+
     
     # Prepare intrinsic value results
     iv_data = {

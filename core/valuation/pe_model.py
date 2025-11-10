@@ -2,7 +2,7 @@ from typing import Optional
 import pandas as pd
 from .base_valuation import BaseValuationModel
 from core.config import MAX_REASONABLE_PE
-from .confidence_scorer import score_pe_confidence
+from .confidence_scorer import ConfidenceScorer
 
 class PEModel(BaseValuationModel):
     def calculate(self, use_median: bool = True) -> Optional[float]:
@@ -36,7 +36,7 @@ class PEModel(BaseValuationModel):
             value = eps * expected_pe
 
             # Use new confidence scorer
-            confidence = score_pe_confidence(pe_filtered.values.tolist())
+            confidence = ConfidenceScorer.score_pe(pe_filtered.values.tolist())
 
             self.confidence = confidence
             self.warnings = model_warnings

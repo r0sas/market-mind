@@ -1,3 +1,6 @@
+import sys, os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import streamlit as st
 from config.page_config import setup_page_config
 from components.header import render_header
@@ -7,8 +10,7 @@ from pages.results_display import display_results
 from pages.information_sections import render_information_sections
 from utils.session_state import initialize_session_state
 
-import sys, os
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 
 def main():
     """Main application entry point"""

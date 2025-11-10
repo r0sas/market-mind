@@ -6,7 +6,7 @@ from core.config import (
     DEFAULT_PROJECTION_YEARS,
     MAX_REASONABLE_GROWTH_RATE
 )
-from .confidence_scorer import score_fcf_confidence  # Can reuse for dividend volatility if desired
+from .confidence_scorer import ConfidenceScorer
 
 class DDMModel(BaseValuationModel):
     def calculate(
@@ -59,7 +59,7 @@ class DDMModel(BaseValuationModel):
             value = pv_dividends + pv_terminal
 
             # Use confidence scorer (reusing FCF logic for simplicity, could create dividend-specific)
-            confidence = score_fcf_confidence(dividends_row.values.tolist())
+            confidence = ConfidenceScorer.score_fcf(dividends_row.values.tolist())
 
             self.confidence = confidence
             self.warnings = model_warnings

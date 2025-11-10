@@ -2,20 +2,24 @@ import streamlit as st
 import pandas as pd
 import logging
 from typing import Dict, List
-from core.oldscripts.DataFetcher import DataFetcher, DataFetcherError
+from core.datafetcher.data_fetcher import DataFetcher, DataFetcherError
+from core.datafetcher.financial_data_processor import FinancialDataProcessor
 from core.simplifier.iv_simplifier import IVSimplifier, SimplifierError
-from data_handlers.valuation_processor import process_valuations
-from data_handlers.competitive_handler import process_competitive_analysis
-from data_handlers.ml_prediction_handler import process_ml_predictions
-from data_handlers.ai_insights_handler import process_ai_insights
+from streamlit_app.data_handlers.valuation_processor import process_valuations
+from streamlit_app.data_handlers.competitive_handler import process_competitive_analysis
+from streamlit_app.data_handlers.ml_prediction_handler import process_ml_predictions
+from streamlit_app.data_handlers.ai_insights_handler import process_ai_insights
 
 logger = logging.getLogger(__name__)
 
-@st.cache_data(ttl=3600, show_spinner=False)
-def fetch_stock_data(ticker: str) -> pd.DataFrame:
-    """Fetch stock data with caching (1 hour TTL)"""
-    fetcher = DataFetcher(ticker)
-    return fetcher.get_comprehensive_data()
+def fetch_stock_data(ticker: str):
+    try:
+        fetcher = FinancialDataProcessor(ticker)  # use the subclass with get_comprehensive_data
+        df_data = fetcher.get_comprehensive_data()
+        return df_data
+    except Exception as e:
+        logger.error(f"Unexpected error processing {ticker}: {e}")
+        return None
 
 def process_tickers(tickers: List[str], config: Dict) -> Dict:
     """
@@ -147,8 +151,8 @@ def initialize_ai_components(config: Dict):
     
     if config.get('use_ai_mode'):
         try:
-            from core.oldscripts.ai_parameter_optimizer import AIParameterOptimizer
-            from core.oldscripts.ai_visual_explainer import AIVisualExplainer
+            from core.ai_optimizer.optimizer import AIParameterOptimizer
+            from core.ai_visual_explainer.explainer import AIVisualExplainer
             
             # Use rule-based for Ollama (needs larger model)
             if config.get('use_ollama'):
