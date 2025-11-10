@@ -14,9 +14,9 @@ from datetime import datetime
 # Import your existing modules
 import sys
 sys.path.append('..')  # Go up one directory to access core/
-from core.DataFetcher.DataFetcher import DataFetcher
+from core.oldscripts.DataFetcher import DataFetcher
 from core.IV_Simplifier.IV_Simplifier import IVSimplifier
-from core.MultiCompanyAggregator import MultiCompanyAggregator
+from core.oldscripts.MultiCompanyAggregator import MultiCompanyAggregator
 from core.Config import ESSENTIAL_METRICS_ML
 
 logging.basicConfig(level=logging.INFO)

@@ -1,0 +1,18 @@
+MIN_REASONABLE_PRICE = 0.01
+MAX_REASONABLE_PRICE = 10000
+MAX_DEVIATION_FROM_CURRENT = 50
+MIN_DEVIATION_FROM_CURRENT = 0.01
+
+FOREIGN_TICKERS = {
+    'TM': 'JPY',
+    '7203.T': 'JPY',
+    '005930.KS': 'KRW',
+    'BABA': 'USD',
+    'TSM': 'USD',
+}
+
+# Currency conversion rates
+CURRENCY_CONVERSION = {
+    'JPY': 150,
+    'KRW': 1300
+}

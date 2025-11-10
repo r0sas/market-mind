@@ -7,9 +7,9 @@ import pandas as pd
 import numpy as np
 from typing import List, Dict
 import logging
-from core.DataFetcher.DataFetcher import DataFetcher, DataFetcherError
+from core.oldscripts.DataFetcher import DataFetcher, DataFetcherError
 from core.IV_Simplifier.IV_Simplifier import IVSimplifier, SimplifierError
-from core.MultiCompanyAggregator import MultiCompanyAggregator
+from core.oldscripts.MultiCompanyAggregator import MultiCompanyAggregator
 
 logger = logging.getLogger(__name__)
 

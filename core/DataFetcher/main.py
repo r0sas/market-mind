@@ -1,5 +1,5 @@
-from core.DataFetcher.financial_data_processor import FinancialDataProcessor
-from core.DataFetcher.data_displayer import DataDisplayer
+from core.datafetcher.financial_data_processor import FinancialDataProcessor
+from core.datafetcher.data_displayer import DataDisplayer
 
 
 def main():

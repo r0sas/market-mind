@@ -1,9 +1,9 @@
 import pandas as pd
 from typing import Optional, Dict, Any, List
 import logging
-from core.DataFetcher.data_fetcher import DataFetcher
-from core.DataFetcher.constants import EPS_COLUMNS, BALANCE_SHEET_ITEMS, CASH_FLOW_ITEMS
-from core.DataFetcher.metrics_calculator import MetricsCalculator
+from core.datafetcher.data_fetcher import DataFetcher
+from core.datafetcher.constants import EPS_COLUMNS, BALANCE_SHEET_ITEMS, CASH_FLOW_ITEMS
+from core.datafetcher.metrics_calculator import MetricsCalculator
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -242,7 +242,7 @@ class FinancialDataProcessor(DataFetcher):
 
 # Example usage
 if __name__ == "__main__":
-    from core.DataFetcher.data_displayer import DataDisplayer
+    from core.datafetcher.data_displayer import DataDisplayer
     
     try:
         # Create processor instance

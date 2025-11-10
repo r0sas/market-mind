@@ -147,3 +147,14 @@ MODEL_SELECTOR_THRESHOLDS = {
     'min_eps_positive_years': 3,
     'min_profitable_years': 5,
 }
+
+# ============================================
+# CONFIDENCE SCORING THRESHOLDS
+# ============================================
+
+CONFIDENCE_THRESHOLDS = {
+    'fcf_volatility_high': 0.4,    # e.g., CV above 40% = low confidence
+    'fcf_volatility_medium': 0.25, # 25–40% = medium confidence
+    'pe_volatility_high': 0.5,     # CV above 50% = low confidence
+    'pe_volatility_medium': 0.3,   # 30–50% = medium confidence
+}
